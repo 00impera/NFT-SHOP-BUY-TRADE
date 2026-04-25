@@ -1,0 +1,422 @@
+/**
+ * Marketplace.test.jsx
+ *
+ * Stack: Vitest + @testing-library/react + @testing-library/user-event
+ *
+ * Install:
+ *   npm install -D vitest @testing-library/react @testing-library/user-event
+ *               @testing-library/jest-dom jsdom
+ *
+ * Run:
+ *   npx vitest run          (CI / single pass)
+ *   npx vitest              (watch mode)
+ *
+ * vite.config.js additions:
+ *   test: { environment: "jsdom", globals: true, setupFiles: ["./src/test/setup.js"] }
+ *
+ * src/test/setup.js:
+ *   import "@testing-library/jest-dom";
+ */
+
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, waitFor, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+
+// ── Shared mocks ──────────────────────────────────────────────────
+vi.mock("thirdweb", () => ({
+  getContract:          vi.fn(() => ({})),
+  prepareContractCall:  vi.fn(() => ({})),
+  readContract:         vi.fn(),
+}));
+vi.mock("thirdweb/react", () => ({
+  useSendTransaction: vi.fn(() => ({ mutate: vi.fn() })),
+}));
+vi.mock("ethers/utils", () => ({
+  formatEther: vi.fn(v => String(Number(v) / 1e18)),
+  parseEther:  vi.fn(v => BigInt(Math.round(Number(v) * 1e18))),
+}));
+vi.mock("./App.jsx",    () => ({ client: {} }));
+vi.mock("./config.js",  () => ({
+  MONAD:               { id: 41454 },
+  NFT_ADDRESS:         "0xNFT",
+  MARKETPLACE_ADDRESS: "0xMKT",
+  NFT_ABI:             [],
+  MARKETPLACE_ABI:     [],
+  TG_BOT_URL:          "https://t.me/BuyTradeNFT_Bot",
+}));
+
+import { readContract } from "thirdweb";
+
+import {
+  friendlyError,
+  useResponsive,
+  StatusBanner,
+  Stat,
+  Field,
+  Panel,
+  PrimaryBtn,
+  GhostBtn,
+  GreenBtn,
+  DangerBtn,
+  StepBtn,
+  NFTPreview,
+  MarketStats,
+  VaultPoolModal,
+  Sidebar,
+} from "./Marketplace.jsx";
+
+// ── Helper ────────────────────────────────────────────────────────
+function renderComp(ui) {
+  return render(ui);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   1. friendlyError
+   ════════════════════════════════════════════════════════════════════ */
+describe("friendlyError()", () => {
+  it("maps 'user rejected' to wallet-cancel message", () => {
+    const result = friendlyError(new Error("MetaMask: user rejected the transaction"));
+    expect(result).toBe("Transaction cancelled by wallet.");
+  });
+
+  it("maps 'insufficient funds' correctly", () => {
+    expect(friendlyError(new Error("insufficient funds for gas"))).toBe(
+      "Insufficient MON balance for this transaction."
+    );
+  });
+
+  it("maps 'execution reverted' correctly", () => {
+    expect(friendlyError(new Error("execution reverted: ERC721: not owner"))).toBe(
+      "Contract call reverted — check token ID and ownership."
+    );
+  });
+
+  it("truncates unknown messages longer than 120 chars", () => {
+    const long = "a".repeat(150);
+    const result = friendlyError(new Error(long));
+    expect(result).toHaveLength(120);
+    expect(result.endsWith("…")).toBe(true);
+  });
+
+  it("passes through short unknown messages verbatim", () => {
+    expect(friendlyError(new Error("weird error"))).toBe("weird error");
+  });
+
+  it("handles non-Error objects gracefully", () => {
+    expect(() => friendlyError("string error")).not.toThrow();
+    expect(friendlyError("string error")).toBe("string error");
+  });
+});
+
+/* ════════════════════════════════════════════════════════════════════
+   2. StatusBanner
+   ════════════════════════════════════════════════════════════════════ */
+describe("<StatusBanner />", () => {
+  it("renders nothing when status is null", () => {
+    const { container } = renderComp(<StatusBanner status={null} onDismiss={vi.fn()} />);
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("renders success message with correct text", () => {
+    renderComp(<StatusBanner status={{ m: "Token purchased!", type: "success" }} onDismiss={vi.fn()} />);
+    expect(screen.getByText("Token purchased!")).toBeInTheDocument();
+  });
+
+  it("renders error message", () => {
+    renderComp(<StatusBanner status={{ m: "Something failed.", type: "error" }} onDismiss={vi.fn()} />);
+    expect(screen.getByText("Something failed.")).toBeInTheDocument();
+  });
+
+  it("calls onDismiss when × is clicked", async () => {
+    const onDismiss = vi.fn();
+    renderComp(<StatusBanner status={{ m: "Info", type: "info" }} onDismiss={onDismiss} />);
+    await userEvent.click(screen.getByRole("button", { name: /dismiss/i }));
+    expect(onDismiss).toHaveBeenCalledOnce();
+  });
+
+  it("has role=alert for screen readers", () => {
+    renderComp(<StatusBanner status={{ m: "Alert", type: "error" }} onDismiss={vi.fn()} />);
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+  });
+});
+
+/* ════════════════════════════════════════════════════════════════════
+   3. Stat
+   ════════════════════════════════════════════════════════════════════ */
+describe("<Stat />", () => {
+  it("displays label and value", () => {
+    renderComp(<Stat label="FLOOR PRICE" value="0.42 MON" />);
+    expect(screen.getByText("FLOOR PRICE")).toBeInTheDocument();
+    expect(screen.getByText("0.42 MON")).toBeInTheDocument();
+  });
+});
+
+/* ════════════════════════════════════════════════════════════════════
+   4. Field
+   ════════════════════════════════════════════════════════════════════ */
+describe("<Field />", () => {
+  it("renders an accessible label/input pair", () => {
+    renderComp(<Field label="Token ID" placeholder="e.g. 42" value="" onChange={vi.fn()} id="tok" />);
+    const input = screen.getByRole("textbox");
+    expect(input).toBeInTheDocument();
+    expect(screen.getByLabelText(/token id/i)).toBe(input);
+  });
+
+  it("calls onChange when user types", async () => {
+    const onChange = vi.fn();
+    renderComp(<Field label="Token ID" placeholder="" value="" onChange={onChange} id="tok2" />);
+    await userEvent.type(screen.getByRole("textbox"), "7");
+    expect(onChange).toHaveBeenCalled();
+  });
+});
+
+/* ════════════════════════════════════════════════════════════════════
+   5. Buttons
+   ════════════════════════════════════════════════════════════════════ */
+describe("Button components", () => {
+  it("PrimaryBtn fires onClick", async () => {
+    const handler = vi.fn();
+    renderComp(<PrimaryBtn onClick={handler}>Buy Now</PrimaryBtn>);
+    await userEvent.click(screen.getByRole("button", { name: /buy now/i }));
+    expect(handler).toHaveBeenCalledOnce();
+  });
+
+  it("PrimaryBtn shows 'Processing…' and is disabled when loading", () => {
+    renderComp(<PrimaryBtn onClick={vi.fn()} loading>Buy Now</PrimaryBtn>);
+    const btn = screen.getByRole("button");
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveTextContent("Processing…");
+    expect(btn).toHaveAttribute("aria-busy", "true");
+  });
+
+  it("GhostBtn fires onClick", async () => {
+    const handler = vi.fn();
+    renderComp(<GhostBtn onClick={handler}>Check Price</GhostBtn>);
+    await userEvent.click(screen.getByRole("button", { name: /check price/i }));
+    expect(handler).toHaveBeenCalledOnce();
+  });
+
+  it("GreenBtn is disabled and shows Processing when loading", () => {
+    renderComp(<GreenBtn onClick={vi.fn()} loading>Accept Trade</GreenBtn>);
+    expect(screen.getByRole("button")).toBeDisabled();
+    expect(screen.getByText("Processing…")).toBeInTheDocument();
+  });
+
+  it("DangerBtn fires onClick", async () => {
+    const handler = vi.fn();
+    renderComp(<DangerBtn onClick={handler}>Cancel Listing</DangerBtn>);
+    await userEvent.click(screen.getByRole("button", { name: /cancel listing/i }));
+    expect(handler).toHaveBeenCalledOnce();
+  });
+
+  it("StepBtn shows step label and fires onClick", async () => {
+    const handler = vi.fn();
+    renderComp(<StepBtn step={1} label="Approve" color="#00c8ff" onClick={handler} />);
+    await userEvent.click(screen.getByRole("button"));
+    expect(handler).toHaveBeenCalledOnce();
+  });
+
+  it("StepBtn has descriptive aria-label", () => {
+    renderComp(<StepBtn step={2} label="List for Sale" color="#c9a84c" onClick={vi.fn()} />);
+    expect(screen.getByRole("button")).toHaveAttribute("aria-label", "Step 2: List for Sale");
+  });
+});
+
+/* ════════════════════════════════════════════════════════════════════
+   6. Panel
+   ════════════════════════════════════════════════════════════════════ */
+describe("<Panel />", () => {
+  it("renders title, description, and children", () => {
+    renderComp(
+      <Panel title="Buy an NFT" desc="Enter a token ID">
+        <span>Child content</span>
+      </Panel>
+    );
+    expect(screen.getByText("Buy an NFT")).toBeInTheDocument();
+    expect(screen.getByText("Enter a token ID")).toBeInTheDocument();
+    expect(screen.getByText("Child content")).toBeInTheDocument();
+  });
+});
+
+/* ════════════════════════════════════════════════════════════════════
+   7. NFTPreview
+   ════════════════════════════════════════════════════════════════════ */
+describe("<NFTPreview />", () => {
+  const contract = {};
+
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it("renders nothing when tokenId is empty", () => {
+    const { container } = renderComp(<NFTPreview nftContract={contract} tokenId="" />);
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("shows loading spinner then metadata", async () => {
+    readContract.mockResolvedValueOnce("https://example.com/meta/1");
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ name: "Cool NFT", description: "A great NFT", image: "https://img.example.com/1.png" }),
+    });
+
+    renderComp(<NFTPreview nftContract={contract} tokenId="1" />);
+    expect(screen.getByRole("status")).toBeInTheDocument();
+
+    await waitFor(() => expect(screen.getByText("Cool NFT")).toBeInTheDocument());
+    expect(screen.getByAltText(/cool nft nft artwork/i)).toBeInTheDocument();
+  });
+
+  it("shows friendly error when readContract fails", async () => {
+    readContract.mockRejectedValueOnce(new Error("fetch failed"));
+    renderComp(<NFTPreview nftContract={contract} tokenId="2" />);
+    await waitFor(() => expect(screen.getByText(/network error/i)).toBeInTheDocument());
+  });
+
+  it("resolves IPFS URIs correctly", async () => {
+    readContract.mockResolvedValueOnce("ipfs://QmABC/meta.json");
+    global.fetch = vi.fn().mockImplementation(url => {
+      expect(url).toContain("https://ipfs.io/ipfs/QmABC");
+      return Promise.resolve({ ok: true, json: async () => ({ name: "IPFS NFT", image: null }) });
+    });
+    renderComp(<NFTPreview nftContract={contract} tokenId="3" />);
+    await waitFor(() => expect(screen.getByText("IPFS NFT")).toBeInTheDocument());
+  });
+
+  it("parses base64 data URI metadata", async () => {
+    const meta = { name: "Data NFT", description: "inline", image: null };
+    const b64  = btoa(JSON.stringify(meta));
+    readContract.mockResolvedValueOnce(`data:application/json;base64,${b64}`);
+    renderComp(<NFTPreview nftContract={contract} tokenId="4" />);
+    await waitFor(() => expect(screen.getByText("Data NFT")).toBeInTheDocument());
+  });
+});
+
+/* ════════════════════════════════════════════════════════════════════
+   8. MarketStats
+   ════════════════════════════════════════════════════════════════════ */
+describe("<MarketStats />", () => {
+  const mkt = {};
+
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it("shows loading '…' initially then renders stats", async () => {
+    readContract
+      .mockResolvedValueOnce(BigInt("2000000000000000000"))  // volume 2 MON
+      .mockResolvedValueOnce(BigInt("500000000000000000"))   // floor 0.5 MON
+      .mockResolvedValueOnce(BigInt(12))                     // 12 listed
+      .mockResolvedValueOnce(BigInt("300000000000000000"));  // vault 0.3 MON
+
+    renderComp(<MarketStats mkt={mkt} onVaultPool={vi.fn()} isMobile={false} />);
+    expect(screen.getAllByText("…").length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.getByText(/2\.00 MON/)).toBeInTheDocument());
+    expect(screen.getByText("12")).toBeInTheDocument();
+  });
+
+  it("shows Retry button and calls fetchStats when all reads fail", async () => {
+    readContract.mockRejectedValue(new Error("network error"));
+    renderComp(<MarketStats mkt={mkt} onVaultPool={vi.fn()} isMobile={false} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument());
+
+    readContract.mockResolvedValue(null);
+    await userEvent.click(screen.getByRole("button", { name: /retry/i }));
+    // After retry stats show — values; all null resolves to "—"
+    await waitFor(() => expect(screen.getAllByText("—").length).toBeGreaterThan(0));
+  });
+
+  it("vault pool button calls onVaultPool", async () => {
+    readContract.mockResolvedValue(null);
+    const onVaultPool = vi.fn();
+    renderComp(<MarketStats mkt={mkt} onVaultPool={onVaultPool} isMobile={false} />);
+    await waitFor(() => screen.getByRole("button", { name: /vault pool/i }));
+    await userEvent.click(screen.getByRole("button", { name: /vault pool/i }));
+    expect(onVaultPool).toHaveBeenCalledOnce();
+  });
+
+  it("has aria-label on the section", () => {
+    readContract.mockResolvedValue(null);
+    renderComp(<MarketStats mkt={mkt} onVaultPool={vi.fn()} isMobile={false} />);
+    expect(screen.getByRole("region", { name: /market statistics/i })).toBeInTheDocument();
+  });
+});
+
+/* ════════════════════════════════════════════════════════════════════
+   9. VaultPoolModal
+   ════════════════════════════════════════════════════════════════════ */
+describe("<VaultPoolModal />", () => {
+  const mkt = {};
+
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it("shows vault balance after fetch", async () => {
+    readContract.mockResolvedValueOnce(BigInt("1500000000000000000")); // 1.5 MON
+    renderComp(<VaultPoolModal onClose={vi.fn()} mkt={mkt} />);
+    await waitFor(() => expect(screen.getByText(/1\.5/)).toBeInTheDocument());
+  });
+
+  it("shows retry button on fetch failure", async () => {
+    readContract.mockRejectedValueOnce(new Error("fail"));
+    renderComp(<VaultPoolModal onClose={vi.fn()} mkt={mkt} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument());
+  });
+
+  it("calls onClose when backdrop is clicked", async () => {
+    readContract.mockResolvedValueOnce(BigInt(0));
+    const onClose = vi.fn();
+    const { container } = renderComp(<VaultPoolModal onClose={onClose} mkt={mkt} />);
+    await userEvent.click(container.firstChild); // backdrop
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("calls onClose when Escape key is pressed", async () => {
+    readContract.mockResolvedValueOnce(BigInt(0));
+    const onClose = vi.fn();
+    renderComp(<VaultPoolModal onClose={onClose} mkt={mkt} />);
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    // onClose called via the dialog's onKeyDown
+    await userEvent.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("has role=dialog and aria-modal", () => {
+    readContract.mockResolvedValueOnce(BigInt(0));
+    renderComp(<VaultPoolModal onClose={vi.fn()} mkt={mkt} />);
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+  });
+});
+
+/* ════════════════════════════════════════════════════════════════════
+   10. Sidebar
+   ════════════════════════════════════════════════════════════════════ */
+describe("<Sidebar />", () => {
+  it("renders all four tabs", () => {
+    renderComp(<Sidebar tab="buy" setTab={vi.fn()} setStatus={vi.fn()} setListing={vi.fn()} isMobile={false} />);
+    expect(screen.getByRole("tab", { name: /buy/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /sell/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /cancel/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /trade/i })).toBeInTheDocument();
+  });
+
+  it("marks active tab as aria-selected=true", () => {
+    renderComp(<Sidebar tab="trade" setTab={vi.fn()} setStatus={vi.fn()} setListing={vi.fn()} isMobile={false} />);
+    expect(screen.getByRole("tab", { name: /trade/i })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: /buy/i })).toHaveAttribute("aria-selected", "false");
+  });
+
+  it("calls setTab on tab click and resets status/listing", async () => {
+    const setTab    = vi.fn();
+    const setStatus = vi.fn();
+    const setListing = vi.fn();
+    renderComp(<Sidebar tab="buy" setTab={setTab} setStatus={setStatus} setListing={setListing} isMobile={false} />);
+    await userEvent.click(screen.getByRole("tab", { name: /sell/i }));
+    expect(setTab).toHaveBeenCalledWith("list");
+    expect(setStatus).toHaveBeenCalledWith(null);
+    expect(setListing).toHaveBeenCalledWith(null);
+  });
+
+  it("hides contract links on mobile", () => {
+    renderComp(<Sidebar tab="buy" setTab={vi.fn()} setStatus={vi.fn()} setListing={vi.fn()} isMobile={true} />);
+    expect(screen.queryByText("CONTRACTS")).not.toBeInTheDocument();
+  });
+});
