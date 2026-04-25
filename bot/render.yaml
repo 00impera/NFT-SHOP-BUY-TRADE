@@ -1,0 +1,11 @@
+services:
+  - type: worker
+    name: buytradenfт-bot
+    env: node
+    buildCommand: npm install
+    startCommand: node bot.js
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: WEBAPP_URL
+        value: https://nft-shop-buy-trade.pages.dev
