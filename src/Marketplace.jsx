@@ -34,6 +34,23 @@ const STATUS_BG    = {
   info:    "rgba(0,200,255,0.07)",
 };
 
+/* ─── RPC helper ─────────────────────────────────────────────────── */
+const RPC_URL = "https://rpc.ankr.com/monad_mainnet";
+
+async function rpcGetBalance(address) {
+  const res = await fetch(RPC_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0", id: 1,
+      method: "eth_getBalance",
+      params: [address, "latest"],
+    }),
+  });
+  const { result } = await res.json();
+  return BigInt(result);
+}
+
 /* ─── Error helpers ──────────────────────────────────────────────── */
 const FRIENDLY_ERRORS = [
   [/user rejected/i,                "Transaction cancelled by wallet."],
@@ -111,25 +128,31 @@ export const Stat = memo(({ label, value, accent, last }) => (
 ));
 
 /* ─── MarketStats ────────────────────────────────────────────────── */
+// Only calls methods that actually exist on the contract:
+// FEE_BPS() and eth_getBalance (native MON held by the contract).
+// Volume / floor / listed-count have no on-chain getter → shown as "—".
 export const MarketStats = memo(({ mkt, onVaultPool, isMobile }) => {
-  const [stats,    setStats]    = useState({ volume: "—", floor: "—", listed: "—", vault: "—" });
+  const [stats,    setStats]    = useState({ fee: "—", vault: "—", volume: "—", listed: "—" });
   const [loading,  setLoading]  = useState(true);
   const [fetchErr, setFetchErr] = useState(false);
 
   const fetchStats = useCallback(async () => {
     setLoading(true); setFetchErr(false);
     try {
-      const [vol, floor, listed, vault] = await Promise.all([
-        readContract({ contract: mkt, method: "totalVolume",   params: [] }).catch(() => null),
-        readContract({ contract: mkt, method: "floorPrice",    params: [] }).catch(() => null),
-        readContract({ contract: mkt, method: "totalListings", params: [] }).catch(() => null),
-        readContract({ contract: mkt, method: "vaultPool",     params: [] }).catch(() => null),
+      const [feeBps, weiBalance] = await Promise.all([
+        readContract({ contract: mkt, method: "FEE_BPS", params: [] }).catch(() => null),
+        rpcGetBalance(MARKETPLACE_ADDRESS).catch(() => null),
       ]);
+
+      const vaultMon = weiBalance != null
+        ? (Number(weiBalance) / 1e18).toFixed(4) + " MON"
+        : "—";
+
       setStats({
-        volume: vol    != null ? `${parseFloat(formatEther(vol)).toFixed(2)} MON`   : "—",
-        floor:  floor  != null ? `${parseFloat(formatEther(floor)).toFixed(3)} MON` : "—",
-        listed: listed != null ? listed.toString()                                   : "—",
-        vault:  vault  != null ? `${parseFloat(formatEther(vault)).toFixed(2)} MON` : "—",
+        fee:    feeBps != null ? `${feeBps.toString()} bps` : "—",
+        vault:  vaultMon,
+        volume: "—",   // no on-chain counter
+        listed: "—",   // no on-chain counter
       });
     } catch (_) { setFetchErr(true); }
     setLoading(false);
@@ -148,10 +171,10 @@ export const MarketStats = memo(({ mkt, onVaultPool, isMobile }) => {
       boxShadow: "0 0 40px rgba(0,0,0,0.6)",
     }}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: isMobile ? "16px 0" : 0 }}>
-        <Stat label="TOTAL VOLUME" value={dot || stats.volume} />
-        <Stat label="FLOOR PRICE"  value={dot || stats.floor}  accent={T.cyan} />
-        <Stat label="NFTs LISTED"  value={dot || stats.listed} accent={T.mid} />
-        <Stat label="VAULT POOL"   value={dot || stats.vault}  accent={T.green} last />
+        <Stat label="FEE RATE"   value={dot || stats.fee}    />
+        <Stat label="VAULT POOL" value={dot || stats.vault}  accent={T.green} />
+        <Stat label="VOLUME"     value={dot || stats.volume} accent={T.cyan} />
+        <Stat label="LISTED"     value={dot || stats.listed} accent={T.mid} last />
       </div>
       <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
         {fetchErr && (
@@ -175,23 +198,27 @@ export const MarketStats = memo(({ mkt, onVaultPool, isMobile }) => {
 });
 
 /* ─── VaultPoolModal ─────────────────────────────────────────────── */
-export const VaultPoolModal = memo(({ onClose, mkt }) => {
-  const [info, setInfo] = useState(null);
+// Fetches native MON balance of the marketplace contract via eth_getBalance.
+// No ABI method needed — works on any EVM chain.
+export const VaultPoolModal = memo(({ onClose }) => {
+  const [balance, setBalance] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState(false);
+  const [err,     setErr]     = useState(false);
   const modalRef = useRef(null);
 
   const load = useCallback(async () => {
     setLoading(true); setErr(false);
     try {
-      const v = await readContract({ contract: mkt, method: "vaultPool", params: [] });
-      setInfo(formatEther(v));
-    } catch (_) { setErr(true); setInfo(null); }
+      const wei = await rpcGetBalance(MARKETPLACE_ADDRESS);
+      const mon = (Number(wei) / 1e18).toFixed(4);
+      setBalance(mon);
+    } catch (_) { setErr(true); }
     setLoading(false);
-  }, [mkt]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
+  // Focus trap
   useEffect(() => {
     const el = modalRef.current;
     if (!el) return;
@@ -216,30 +243,47 @@ export const VaultPoolModal = memo(({ onClose, mkt }) => {
     }} onClick={onClose} onKeyDown={e => e.key === "Escape" && onClose()}>
       <div ref={modalRef} onClick={e => e.stopPropagation()} style={{
         background: T.bg, border: "1px solid #0a3a2a", borderRadius: "16px",
-        padding: "32px 36px", minWidth: "320px", maxWidth: "400px", width: "100%",
+        padding: "32px 36px", minWidth: "320px", maxWidth: "420px", width: "100%",
         boxShadow: "0 0 60px rgba(0,255,136,0.12)",
       }}>
         <div id="vault-title" style={{ fontFamily: "Cinzel, serif", fontSize: "16px", color: T.green, letterSpacing: "3px", marginBottom: "6px" }}>◈ VAULT POOL</div>
         <p style={{ fontSize: "10px", color: T.dim, marginBottom: "20px", lineHeight: 1.7 }}>
-          The Vault Pool accumulates fees from all marketplace transactions. Funds are distributed to eligible NFT holders based on protocol rules.
+          Marketplace fees accumulate in the contract. The balance shown is the total MON held by the marketplace contract on-chain.
         </p>
-        <div style={{ background: "rgba(0,255,136,0.06)", border: "1px solid rgba(0,255,136,0.18)", borderRadius: "10px", padding: "18px 20px", textAlign: "center" }}>
-          <div style={{ fontSize: "9px", color: T.dim, letterSpacing: "2px", marginBottom: "6px" }}>CURRENT BALANCE</div>
-          {loading && <div style={{ color: T.dim, fontSize: "12px" }}>Loading…</div>}
-          {err && (
-            <div>
-              <div style={{ color: T.red, fontSize: "11px", marginBottom: "8px" }}>Could not fetch vault balance.</div>
-              <button onClick={load} style={{ fontSize: "10px", color: T.cyan, background: "none", border: `1px solid ${T.cyan}44`, borderRadius: "6px", padding: "5px 10px", cursor: "pointer" }}>↻ Retry</button>
+
+        {/* Balance card */}
+        <div style={{ background: "rgba(0,255,136,0.06)", border: "1px solid rgba(0,255,136,0.18)", borderRadius: "10px", padding: "22px 20px", textAlign: "center", marginBottom: "14px" }}>
+          <div style={{ fontSize: "9px", color: T.dim, letterSpacing: "2px", marginBottom: "8px" }}>CONTRACT BALANCE</div>
+          {loading && (
+            <div style={{ color: T.dim, fontSize: "12px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
+              <span style={{ animation: "spin 1.2s linear infinite", display: "inline-block" }}>◌</span> Fetching…
             </div>
           )}
-          {!loading && !err && info != null && (
-            <div style={{ fontFamily: "Cinzel, serif", fontWeight: 700, fontSize: "28px", color: T.green }}>
-              {info} <span style={{ fontSize: "14px", color: T.mid }}>MON</span>
+          {err && (
+            <div>
+              <div style={{ color: T.red, fontSize: "11px", marginBottom: "10px" }}>Could not fetch balance — RPC error.</div>
+              <button onClick={load} style={{ fontSize: "10px", color: T.cyan, background: "none", border: `1px solid ${T.cyan}44`, borderRadius: "6px", padding: "5px 12px", cursor: "pointer" }}>↻ Retry</button>
+            </div>
+          )}
+          {!loading && !err && balance != null && (
+            <div style={{ fontFamily: "Cinzel, serif", fontWeight: 700, fontSize: "32px", color: T.green, lineHeight: 1 }}>
+              {balance}
+              <span style={{ fontSize: "15px", color: T.mid, marginLeft: "8px" }}>MON</span>
             </div>
           )}
         </div>
+
+        {/* Contract link */}
+        <a href={`https://monadscan.com/address/${MARKETPLACE_ADDRESS}`} target="_blank" rel="noreferrer"
+          style={{ display: "block", textAlign: "center", fontSize: "10px", color: T.dim, fontFamily: "Share Tech Mono, monospace", textDecoration: "none", marginBottom: "18px" }}
+          onMouseEnter={e => e.target.style.color = T.cyan}
+          onMouseLeave={e => e.target.style.color = T.dim}
+        >
+          ↗ View contract on Monadscan
+        </a>
+
         <button onClick={onClose} aria-label="Close vault pool dialog" style={{
-          width: "100%", marginTop: "18px", padding: "11px", borderRadius: "8px",
+          width: "100%", padding: "11px", borderRadius: "8px",
           border: `1px solid ${T.border}`, background: "transparent", color: T.dim,
           fontSize: "11px", cursor: "pointer", transition: "all 0.15s",
         }}
@@ -430,9 +474,9 @@ export const Sidebar = memo(({ tab, setTab, setStatus, setListing, isMobile }) =
 ));
 
 /* ═══════════════════════════════════════════════════════════════════
-   NEW: OpenSea-style BuyPanel
+   BuyPanel — OpenSea-style card
    ══════════════════════════════════════════════════════════════════ */
-function BuyPanel({ buyId, setBuyId, listing, setListing, meta, metaLoading, onBuy, onCheck, loading, nft, copied, setCopied }) {
+function BuyPanel({ buyId, setBuyId, listing, setListing, meta, metaLoading, onBuy, onCheck, loading, copied, setCopied }) {
   const timerRef = useRef(null);
 
   function handleTokenChange(e) {
@@ -506,8 +550,10 @@ function BuyPanel({ buyId, setBuyId, listing, setListing, meta, metaLoading, onB
           {!metaLoading && !meta?.image && (
             <div style={{ textAlign: "center", color: T.border }}>
               <div style={{ fontSize: "48px", marginBottom: "8px" }}>◈</div>
-              {buyId && <div style={{ fontSize: "10px", color: T.dim, letterSpacing: "1px" }}>No artwork</div>}
-              {!buyId && <div style={{ fontSize: "10px", color: T.dim, letterSpacing: "1px" }}>Enter ID</div>}
+              {buyId
+                ? <div style={{ fontSize: "10px", color: T.dim, letterSpacing: "1px" }}>No artwork</div>
+                : <div style={{ fontSize: "10px", color: T.dim, letterSpacing: "1px" }}>Enter ID</div>
+              }
             </div>
           )}
         </div>
@@ -534,7 +580,7 @@ function BuyPanel({ buyId, setBuyId, listing, setListing, meta, metaLoading, onB
             />
           </div>
 
-          {/* NFT name + description — fade in when meta arrives */}
+          {/* NFT name + description */}
           {meta && (
             <div className="fade-in">
               <div style={{ fontFamily: "Cinzel, serif", fontSize: "17px", fontWeight: 700, color: T.gold, marginBottom: "5px" }}>
@@ -599,7 +645,7 @@ function BuyPanel({ buyId, setBuyId, listing, setListing, meta, metaLoading, onB
               cursor: hasListing && !loading ? "pointer" : "not-allowed",
               background: hasListing
                 ? loading ? "rgba(0,255,136,0.2)" : "linear-gradient(135deg, #005a30, #00ff88)"
-                : `rgba(255,255,255,0.04)`,
+                : "rgba(255,255,255,0.04)",
               color: hasListing ? "#000" : T.border,
               transition: "all 0.2s",
               boxShadow: hasListing && !loading ? "0 4px 24px rgba(0,255,136,0.3)" : "none",
@@ -610,7 +656,7 @@ function BuyPanel({ buyId, setBuyId, listing, setListing, meta, metaLoading, onB
             {loading ? "Processing…" : hasListing ? `Buy for ${listing.price} MON` : "Buy Now"}
           </button>
 
-          {/* Action row: Share · Explorer · Favourite */}
+          {/* Action row */}
           <div style={{ display: "flex", gap: "8px" }}>
             <button onClick={handleCopy} disabled={!buyId} aria-label="Copy shareable link"
               style={{
@@ -668,7 +714,7 @@ export default function Marketplace({ account }) {
   const [listing,   setListing]   = useState(null);
   const [vaultOpen, setVaultOpen] = useState(false);
 
-  // Per-action loading
+  // Per-action loading flags
   const [loading, setLoading] = useState({
     buy: false, approve: false, list: false,
     cancel: false, offerTrade: false, acceptTrade: false,
@@ -705,7 +751,9 @@ export default function Marketplace({ account }) {
     (async () => {
       try {
         const uri = await readContract({ contract: nft, method: "tokenURI", params: [BigInt(buyId)] });
-        const url = uri.startsWith("ipfs://") ? uri.replace("ipfs://", "https://ipfs.io/ipfs/") : uri;
+        const url = uri.startsWith("ipfs://")
+          ? uri.replace("ipfs://", "https://ipfs.io/ipfs/")
+          : uri;
         let data;
         if (url.startsWith("data:application/json")) {
           data = JSON.parse(atob(url.split(",")[1]));
@@ -716,38 +764,48 @@ export default function Marketplace({ account }) {
         }
         const img = data.image?.replace("ipfs://", "https://ipfs.io/ipfs/") ?? null;
         if (!cancelled) setBuyMeta({ name: data.name, description: data.description, image: img });
-      } catch (_) { if (!cancelled) setBuyMeta(null); }
+      } catch (_) {
+        if (!cancelled) setBuyMeta(null);
+      }
       if (!cancelled) setBuyMetaLoading(false);
     })();
     return () => { cancelled = true; };
   }, [buyId, nft]);
 
   /* ── Handlers ── */
+
   const checkListing = useCallback(async id => {
     try {
       msg("Fetching listing…", "info");
       const d = await readContract({ contract: mkt, method: "listings", params: [BigInt(id)] });
       setListing({ seller: d[0], price: formatEther(d[1]), active: d[2] });
-      d[2] ? msg(`Token #${id} — ${formatEther(d[1])} MON`, "success")
-           : msg(`Token #${id} is not currently listed.`, "error");
+      d[2]
+        ? msg(`Token #${id} — ${formatEther(d[1])} MON`, "success")
+        : msg(`Token #${id} is not currently listed.`, "error");
     } catch (e) { msg(friendlyError(e), "error"); }
   }, [mkt, msg]);
 
   const handleApprove = useCallback(async id => {
     msg("Approving marketplace…", "info"); setL("approve", true);
-    sendTx(prepareContractCall({ contract: nft, method: "approve", params: [MARKETPLACE_ADDRESS, BigInt(id)] }), {
-      onSuccess: () => { msg("Approved! Now click Step 2.", "success"); setL("approve", false); },
-      onError:   e  => { msg(friendlyError(e), "error");                setL("approve", false); },
-    });
+    sendTx(
+      prepareContractCall({ contract: nft, method: "approve", params: [MARKETPLACE_ADDRESS, BigInt(id)] }),
+      {
+        onSuccess: () => { msg("Approved! Now click Step 2.", "success"); setL("approve", false); },
+        onError:   e  => { msg(friendlyError(e), "error");                setL("approve", false); },
+      }
+    );
   }, [nft, msg, sendTx, setL]);
 
   const handleList = useCallback(async () => {
     if (!listId || !listPrice) return msg("Enter token ID and price.", "error");
     msg("Publishing listing…", "info"); setL("list", true);
-    sendTx(prepareContractCall({ contract: mkt, method: "listForSale", params: [BigInt(listId), parseEther(listPrice)] }), {
-      onSuccess: () => { msg(`Token #${listId} listed for ${listPrice} MON ✓`); setL("list", false); },
-      onError:   e  => { msg(friendlyError(e), "error");                         setL("list", false); },
-    });
+    sendTx(
+      prepareContractCall({ contract: mkt, method: "listForSale", params: [BigInt(listId), parseEther(listPrice)] }),
+      {
+        onSuccess: () => { msg(`Token #${listId} listed for ${listPrice} MON ✓`); setL("list", false); },
+        onError:   e  => { msg(friendlyError(e), "error");                         setL("list", false); },
+      }
+    );
   }, [mkt, listId, listPrice, msg, sendTx, setL]);
 
   const handleBuy = useCallback(async () => {
@@ -757,35 +815,47 @@ export default function Marketplace({ account }) {
       const d = await readContract({ contract: mkt, method: "listings", params: [BigInt(buyId)] });
       if (!d[2]) return msg("Token is not listed for sale.", "error");
       msg("Sending transaction…", "info"); setL("buy", true);
-      sendTx(prepareContractCall({ contract: mkt, method: "buy", params: [BigInt(buyId)], value: d[1] }), {
-        onSuccess: () => { msg(`Token #${buyId} purchased! 🎉`); setL("buy", false); },
-        onError:   e  => { msg(friendlyError(e), "error");        setL("buy", false); },
-      });
+      sendTx(
+        prepareContractCall({ contract: mkt, method: "buy", params: [BigInt(buyId)], value: d[1] }),
+        {
+          onSuccess: () => { msg(`Token #${buyId} purchased! 🎉`); setL("buy", false); },
+          onError:   e  => { msg(friendlyError(e), "error");        setL("buy", false); },
+        }
+      );
     } catch (e) { msg(friendlyError(e), "error"); }
   }, [mkt, buyId, msg, sendTx, setL]);
 
   const handleCancel = useCallback(async () => {
     if (!cancelId) return msg("Enter a token ID.", "error");
     msg("Cancelling listing…", "info"); setL("cancel", true);
-    sendTx(prepareContractCall({ contract: mkt, method: "cancelListing", params: [BigInt(cancelId)] }), {
-      onSuccess: () => { msg(`Listing #${cancelId} cancelled.`); setL("cancel", false); },
-      onError:   e  => { msg(friendlyError(e), "error");          setL("cancel", false); },
-    });
+    sendTx(
+      prepareContractCall({ contract: mkt, method: "cancelListing", params: [BigInt(cancelId)] }),
+      {
+        onSuccess: () => { msg(`Listing #${cancelId} cancelled.`); setL("cancel", false); },
+        onError:   e  => { msg(friendlyError(e), "error");          setL("cancel", false); },
+      }
+    );
   }, [mkt, cancelId, msg, sendTx, setL]);
 
   const handleOfferTrade = useCallback(async () => {
     if (!myToken || !wantToken) return msg("Enter both token IDs.", "error");
     msg("Step 1/2 — Approving…", "info"); setL("offerTrade", true);
-    sendTx(prepareContractCall({ contract: nft, method: "approve", params: [MARKETPLACE_ADDRESS, BigInt(myToken)] }), {
-      onSuccess: () => {
-        msg("Step 2/2 — Sending offer…", "info");
-        sendTx(prepareContractCall({ contract: mkt, method: "offerTrade", params: [BigInt(myToken), BigInt(wantToken)] }), {
-          onSuccess: () => { msg(`Trade offered: #${myToken} ⇄ #${wantToken} ✓`); setL("offerTrade", false); },
-          onError:   e  => { msg(friendlyError(e), "error");                        setL("offerTrade", false); },
-        });
-      },
-      onError: e => { msg(friendlyError(e), "error"); setL("offerTrade", false); },
-    });
+    sendTx(
+      prepareContractCall({ contract: nft, method: "approve", params: [MARKETPLACE_ADDRESS, BigInt(myToken)] }),
+      {
+        onSuccess: () => {
+          msg("Step 2/2 — Sending offer…", "info");
+          sendTx(
+            prepareContractCall({ contract: mkt, method: "offerTrade", params: [BigInt(myToken), BigInt(wantToken)] }),
+            {
+              onSuccess: () => { msg(`Trade offered: #${myToken} ⇄ #${wantToken} ✓`); setL("offerTrade", false); },
+              onError:   e  => { msg(friendlyError(e), "error");                        setL("offerTrade", false); },
+            }
+          );
+        },
+        onError: e => { msg(friendlyError(e), "error"); setL("offerTrade", false); },
+      }
+    );
   }, [nft, mkt, myToken, wantToken, msg, sendTx, setL]);
 
   const handleAcceptTrade = useCallback(async () => {
@@ -795,16 +865,22 @@ export default function Marketplace({ account }) {
       const o = await readContract({ contract: mkt, method: "tradeOffers", params: [BigInt(acceptId)] });
       if (!o[3]) return msg(`No active offer for token #${acceptId}.`, "error");
       msg("Step 1/2 — Approving…", "info"); setL("acceptTrade", true);
-      sendTx(prepareContractCall({ contract: nft, method: "approve", params: [MARKETPLACE_ADDRESS, o[2]] }), {
-        onSuccess: () => {
-          msg("Step 2/2 — Accepting trade…", "info");
-          sendTx(prepareContractCall({ contract: mkt, method: "acceptTrade", params: [BigInt(acceptId)] }), {
-            onSuccess: () => { msg("Trade completed! ✓");      setL("acceptTrade", false); },
-            onError:   e  => { msg(friendlyError(e), "error"); setL("acceptTrade", false); },
-          });
-        },
-        onError: e => { msg(friendlyError(e), "error"); setL("acceptTrade", false); },
-      });
+      sendTx(
+        prepareContractCall({ contract: nft, method: "approve", params: [MARKETPLACE_ADDRESS, o[2]] }),
+        {
+          onSuccess: () => {
+            msg("Step 2/2 — Accepting trade…", "info");
+            sendTx(
+              prepareContractCall({ contract: mkt, method: "acceptTrade", params: [BigInt(acceptId)] }),
+              {
+                onSuccess: () => { msg("Trade completed! ✓");      setL("acceptTrade", false); },
+                onError:   e  => { msg(friendlyError(e), "error"); setL("acceptTrade", false); },
+              }
+            );
+          },
+          onError: e => { msg(friendlyError(e), "error"); setL("acceptTrade", false); },
+        }
+      );
     } catch (e) { msg(friendlyError(e), "error"); }
   }, [nft, mkt, acceptId, msg, sendTx, setL]);
 
@@ -817,7 +893,7 @@ export default function Marketplace({ account }) {
         .fade-in          { animation: fadeIn 0.25s ease; }
       `}</style>
 
-      {vaultOpen && <VaultPoolModal onClose={() => setVaultOpen(false)} mkt={mkt} />}
+      {vaultOpen && <VaultPoolModal onClose={() => setVaultOpen(false)} />}
 
       <main style={{ maxWidth: "1100px", margin: "0 auto", padding: isMobile ? "20px 12px 48px" : "32px 24px 64px", position: "relative", zIndex: 1 }}>
 
@@ -852,7 +928,7 @@ export default function Marketplace({ account }) {
           <div>
             <StatusBanner status={status} onDismiss={() => setStatus(null)} />
 
-            {/* ── BUY — OpenSea-style panel ── */}
+            {/* ── BUY ── */}
             {tab === "buy" && (
               <BuyPanel
                 buyId={buyId}
@@ -864,7 +940,6 @@ export default function Marketplace({ account }) {
                 onBuy={handleBuy}
                 onCheck={checkListing}
                 loading={loading.buy}
-                nft={nft}
                 copied={copied}
                 setCopied={setCopied}
               />
