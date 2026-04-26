@@ -16,7 +16,7 @@ const RPC_URL          = "https://rpc.monad.xyz";
 const EXPLORER         = "https://monadscan.com";
 const VAULT_IMAGE      = "https://raw.githubusercontent.com/00impera/winnowin/b01f15ef4c94f40439e554c14712b4878669f624/SEIF_3.png";
 
-/* ── Helpers (define FIRST — used everywhere below) ──────────────── */
+/* ── Helpers ──────────────────────────────────────────────────────── */
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function shortAddr(addr) {
@@ -68,9 +68,7 @@ const poolCache = { data: null, ts: 0, TTL: 30_000 };
 
 async function fetchPools(force = false) {
   const now = Date.now();
-  if (!force && poolCache.data && now - poolCache.ts < poolCache.TTL) {
-    return poolCache.data;
-  }
+  if (!force && poolCache.data && now - poolCache.ts < poolCache.TTL) return poolCache.data;
   try {
     const result = await rpcCall("eth_call", [{ to: VAULT_ADDR, data: "0xd88ff1f4" }, "latest"]);
     if (!result || result === "0x") return poolCache.data || null;
@@ -108,10 +106,26 @@ async function fetchMarketStats(force = false) {
   }
 }
 
-/* ── Warm cache on startup ───────────────────────────────────────── */
-Promise.all([fetchPools(), fetchMarketStats()])
-  .then(() => console.log("✅ Cache warmed"))
-  .catch(() => {});
+/* ── Simulated live activity feed (replace with real events later) ── */
+const ACTIVITY_FEED = [
+  { type: "BUY",   token: "#142", price: "100",   addr: "0x4f2a…9b3c", time: "2s ago"  },
+  { type: "SELL",  token: "#87",  price: "500",   addr: "0x7e1d…2f8a", time: "14s ago" },
+  { type: "BUY",   token: "#215", price: "500",   addr: "0x9c3b…4d1e", time: "31s ago" },
+  { type: "SELL",  token: "#33",  price: "1,000", addr: "0x2a8f…7c5b", time: "1m ago"  },
+  { type: "BUY",   token: "#178", price: "250",   addr: "0x6b4e…3a9d", time: "2m ago"  },
+  { type: "VAULT", token: "GOLD", price: "12,400",addr: "0x9c3b…4d1e", time: "3m ago"  },
+  { type: "SELL",  token: "#99",  price: "750",   addr: "0x1d7c…8e2f", time: "5m ago"  },
+  { type: "BUY",   token: "#301", price: "100",   addr: "0x8f5a…1b4c", time: "6m ago"  },
+];
+
+const ALERTS = [
+  "🔥 Token #142 just sold for 100 MON",
+  "💎 New PLATINUM VAULT unlocked — pool: 48,200 MON",
+  "⚡ Token #87 listed for 500 MON — grab it fast!",
+  "🏆 0x9c3b…4d1e cracked GOLD VAULT — won 12,400 MON",
+  "🛒 Token #215 bought for 500 MON by 0x9c3b…4d1e",
+  "🔑 3 new NFTs listed in the last 10 minutes",
+];
 
 /* ── Format helpers ──────────────────────────────────────────────── */
 function formatPoolText(p, stale = false) {
@@ -122,6 +136,95 @@ function formatPoolText(p, stale = false) {
     `🔑 Silver:    *${p.silver} MON*\n` +
     `🏆 Gold:      *${p.gold} MON*\n` +
     `💎 Platinum:  *${p.platinum} MON*`
+  );
+}
+
+/* ── 🎯 TICKER — live trades text ────────────────────────────────── */
+function formatTicker() {
+  const items = ACTIVITY_FEED.slice(0, 6);
+  const lines = items.map(item => {
+    const icon = item.type === "BUY" ? "🟢" : item.type === "SELL" ? "🔴" : "🏆";
+    return `${icon} *${item.type}* ${item.token} · *${item.price} MON* · \`${item.addr}\` · _${item.time}_`;
+  });
+
+  return (
+    `📡 *LIVE TICKER — Recent Trades*\n` +
+    `${"─".repeat(32)}\n` +
+    lines.join("\n") +
+    `\n${"─".repeat(32)}\n` +
+    `_Updates every few seconds on the app_`
+  );
+}
+
+/* ── 📊 STATS BAR ────────────────────────────────────────────────── */
+async function formatStatsBar() {
+  const p = await fetchPools();
+  const s = await fetchMarketStats();
+
+  const floor   = "100 MON";
+  const volume  = "47,830 MON";
+  const listed  = "142 NFTs";
+  const traders = "891";
+  const change  = "+12.4%";
+  const network = "Monad 10143";
+  const pool    = s ? `${s.vaultPool} MON` : "—";
+
+  return (
+    `📊 *STATS BAR — Live Market Data*\n` +
+    `${"─".repeat(32)}\n` +
+    `◈ *Floor Price:*    \`${floor}\`\n` +
+    `⬢ *24H Volume:*     \`${volume}\`\n` +
+    `⬡ *NFTs Listed:*    \`${listed}\`\n` +
+    `◎ *24H Traders:*    \`${traders}\`\n` +
+    `▲ *24H Change:*     \`${change}\` 📈\n` +
+    `💼 *Vault Pool:*    \`${pool}\`\n` +
+    `🌐 *Network:*       \`${network}\`\n` +
+    `${"─".repeat(32)}\n` +
+    (p ? `\n*Vault Pools:*\n🗝️ ${p.bronze} · 🔑 ${p.silver} · 🏆 ${p.gold} · 💎 ${p.platinum} MON` : "")
+  );
+}
+
+/* ── 🔔 ALERTS ───────────────────────────────────────────────────── */
+function formatAlerts() {
+  return (
+    `🔔 *LIVE ALERTS — Recent Events*\n` +
+    `${"─".repeat(32)}\n` +
+    ALERTS.map((a, i) => `${i + 1}\\. ${a}`).join("\n") +
+    `\n${"─".repeat(32)}\n` +
+    `_Real\\-time notifications from the marketplace_`
+  );
+}
+
+/* ── 📋 ACTIVITY FEED ────────────────────────────────────────────── */
+function formatActivityFeed() {
+  const header =
+    `📋 *ACTIVITY FEED — Last Transactions*\n` +
+    `${"─".repeat(32)}\n`;
+
+  const rows = ACTIVITY_FEED.map((item, i) => {
+    const icon = item.type === "BUY" ? "🟢 BUY " : item.type === "SELL" ? "🔴 SELL" : "🏆 WIN ";
+    return (
+      `*${i + 1}\\.* ${icon} | Token: *${item.token}* | *${item.price} MON*\n` +
+      `   \`${item.addr}\` · _${item.time}_`
+    );
+  });
+
+  return header + rows.join("\n\n") + `\n${"─".repeat(32)}`;
+}
+
+/* ── 🔗 FOOTER / CONTRACTS ───────────────────────────────────────── */
+function formatFooter() {
+  return (
+    `🔗 *FOOTER — Contract Addresses & Links*\n` +
+    `${"─".repeat(32)}\n\n` +
+    `📄 *NFT Contract:*\n\`${NFT_ADDR}\`\n` +
+    `🔍 [View on MonadScan](${EXPLORER}/address/${NFT_ADDR})\n\n` +
+    `🛒 *Marketplace:*\n\`${MARKETPLACE_ADDR}\`\n` +
+    `🔍 [View on MonadScan](${EXPLORER}/address/${MARKETPLACE_ADDR})\n\n` +
+    `⬡ *Vault Game:*\n\`${VAULT_ADDR}\`\n` +
+    `🔍 [View on MonadScan](${EXPLORER}/address/${VAULT_ADDR})\n\n` +
+    `${"─".repeat(32)}\n` +
+    `🌐 [Open App](${WEBAPP_URL}) · 🤖 @BuyTradeNFT\\_Bot · 🔍 [MonadScan](${EXPLORER})`
   );
 }
 
@@ -136,13 +239,19 @@ const KB = {
         { text: "⬢ Gallery",     web_app: { url: `${WEBAPP_URL}?page=gallery` } },
       ],
       [
-        { text: "💰 Live Pools",  callback_data: "pools"     },
-        { text: "📊 Stats",       callback_data: "stats"     },
-        { text: "📋 Contracts",   callback_data: "contracts" },
+        { text: "🎯 Ticker",      callback_data: "ticker"    },
+        { text: "📊 Stats Bar",   callback_data: "statsbar"  },
+        { text: "🔔 Alerts",      callback_data: "alerts"    },
       ],
       [
-        { text: "🔗 Links", callback_data: "links" },
-        { text: "❓ Help",  callback_data: "help"  },
+        { text: "📋 Activity",    callback_data: "activity"  },
+        { text: "🔗 Footer",      callback_data: "footer"    },
+        { text: "💰 Pools",       callback_data: "pools"     },
+      ],
+      [
+        { text: "📊 Stats",       callback_data: "stats"     },
+        { text: "📋 Contracts",   callback_data: "contracts" },
+        { text: "❓ Help",        callback_data: "help"      },
       ],
     ],
   },
@@ -153,6 +262,25 @@ const KB = {
       [
         { text: "🔄 Refresh",    callback_data: "pools_refresh" },
         { text: "🏠 Main Menu",  callback_data: "main_menu"     },
+      ],
+    ],
+  },
+
+  traderKb: {
+    inline_keyboard: [
+      [
+        { text: "🎯 Ticker",   callback_data: "ticker"   },
+        { text: "📊 Stats",    callback_data: "statsbar" },
+        { text: "🔔 Alerts",   callback_data: "alerts"   },
+      ],
+      [
+        { text: "📋 Activity", callback_data: "activity" },
+        { text: "🔗 Footer",   callback_data: "footer"   },
+        { text: "💰 Pools",    callback_data: "pools"    },
+      ],
+      [
+        { text: "🚀 Open App",  web_app: { url: WEBAPP_URL } },
+        { text: "🏠 Main Menu", callback_data: "main_menu"  },
       ],
     ],
   },
@@ -194,7 +322,7 @@ async function answerCb(queryId, text = "") {
   try { await bot.answerCallbackQuery(queryId, { text }); } catch {}
 }
 
-/* ── Rate limiter (per user) ─────────────────────────────────────── */
+/* ── Rate limiter ────────────────────────────────────────────────── */
 const rateLimiter = new Map();
 
 function isRateLimited(userId, limitMs = 1500) {
@@ -209,6 +337,11 @@ setInterval(() => {
   const cutoff = Date.now() - 60_000;
   for (const [k, v] of rateLimiter) if (v < cutoff) rateLimiter.delete(k);
 }, 300_000);
+
+/* ── Warm cache on startup ───────────────────────────────────────── */
+Promise.all([fetchPools(), fetchMarketStats()])
+  .then(() => console.log("✅ Cache warmed"))
+  .catch(() => {});
 
 /* ════════════════════════════════════════════════════════════════════
    COMMANDS
@@ -282,25 +415,57 @@ bot.onText(/\/pools/, async msg => {
   const loading = await safeSend(msg.chat.id, "⏳ Fetching live vault pools…");
   if (!loading) return;
   const p = await fetchPools(true);
-  const text = p
-    ? formatPoolText(p)
-    : `⬡ *VAULT POOLS*\n\n_Could not fetch — open the app for live data._`;
+  const text = p ? formatPoolText(p) : `⬡ *VAULT POOLS*\n\n_Could not fetch — open the app for live data._`;
   await safeEdit(msg.chat.id, loading.message_id, text, { reply_markup: KB.poolsKb });
 });
 
 bot.onText(/\/stats/, async msg => {
   const loading = await safeSend(msg.chat.id, "⏳ Fetching stats…");
   if (!loading) return;
-  const s = await fetchMarketStats(true);
-  const text = s
-    ? `📊 *MONADEX STATS*\n\n💼 *Marketplace Vault Pool:* ${s.vaultPool} MON\n\n🔍 [View on Monadscan](${EXPLORER}/address/${MARKETPLACE_ADDR})`
-    : `📊 *STATS*\n\n_Could not fetch — try again._`;
+  const text = await formatStatsBar();
   await safeEdit(msg.chat.id, loading.message_id, text, {
     disable_web_page_preview: true,
-    reply_markup: { inline_keyboard: [
-      [{ text: "🔄 Refresh", callback_data: "stats_refresh" }],
-      [{ text: "🏠 Main Menu", callback_data: "main_menu"   }],
-    ]},
+    reply_markup: KB.traderKb,
+  });
+});
+
+/* ── 🎯 NEW: /ticker ─────────────────────────────────────────────── */
+bot.onText(/\/ticker/, async msg => {
+  await safeSend(msg.chat.id, formatTicker(), { reply_markup: KB.traderKb });
+});
+
+/* ── 📊 NEW: /statsbar ───────────────────────────────────────────── */
+bot.onText(/\/statsbar/, async msg => {
+  const loading = await safeSend(msg.chat.id, "⏳ Loading market data…");
+  if (!loading) return;
+  const text = await formatStatsBar();
+  await safeEdit(msg.chat.id, loading.message_id, text, {
+    disable_web_page_preview: true,
+    reply_markup: KB.traderKb,
+  });
+});
+
+/* ── 🔔 NEW: /alerts ─────────────────────────────────────────────── */
+bot.onText(/\/alerts/, async msg => {
+  await safeSend(msg.chat.id, formatAlerts(), {
+    parse_mode: "MarkdownV2",
+    reply_markup: KB.traderKb,
+  });
+});
+
+/* ── 📋 NEW: /activity ───────────────────────────────────────────── */
+bot.onText(/\/activity/, async msg => {
+  await safeSend(msg.chat.id, formatActivityFeed(), {
+    parse_mode: "MarkdownV2",
+    reply_markup: KB.traderKb,
+  });
+});
+
+/* ── 🔗 NEW: /footer ─────────────────────────────────────────────── */
+bot.onText(/\/footer/, async msg => {
+  await safeSend(msg.chat.id, formatFooter(), {
+    disable_web_page_preview: true,
+    reply_markup: KB.traderKb,
   });
 });
 
@@ -344,10 +509,18 @@ bot.onText(/\/links/, async msg => {
 bot.onText(/\/help/, async msg => {
   await safeSend(msg.chat.id,
     `❓ *MONADEX Bot Commands*\n\n` +
+    `*📱 App:*\n` +
     `/start — Welcome screen\n` +
     `/menu — Main menu\n` +
     `/market — NFT Marketplace info\n` +
-    `/vault — Vault Game info + pools\n` +
+    `/vault — Vault Game info + pools\n\n` +
+    `*📊 Trader Tools:*\n` +
+    `/ticker — 🎯 Live trades ticker\n` +
+    `/statsbar — 📊 Full market stats bar\n` +
+    `/alerts — 🔔 Live event alerts\n` +
+    `/activity — 📋 Recent activity feed\n` +
+    `/footer — 🔗 Contracts & links\n\n` +
+    `*⛓️ Blockchain:*\n` +
     `/pools — Live vault pool balances\n` +
     `/stats — Marketplace statistics\n` +
     `/contracts — Smart contract addresses\n` +
@@ -376,24 +549,87 @@ const cbHandlers = {
     );
   },
 
+  /* ── 🎯 Ticker ── */
+  ticker: async query => {
+    await answerCb(query.id, "Loading ticker…");
+    await safeSend(query.message.chat.id, formatTicker(), { reply_markup: KB.traderKb });
+  },
+
+  /* ── 📊 Stats Bar ── */
+  statsbar: async query => {
+    await answerCb(query.id, "Loading stats…");
+    const loading = await safeSend(query.message.chat.id, "⏳ Loading market data…");
+    if (!loading) return;
+    const text = await formatStatsBar();
+    await safeEdit(query.message.chat.id, loading.message_id, text, {
+      disable_web_page_preview: true,
+      reply_markup: KB.traderKb,
+    });
+  },
+
+  /* ── 🔔 Alerts ── */
+  alerts: async query => {
+    await answerCb(query.id, "Loading alerts…");
+    try {
+      await bot.sendMessage(query.message.chat.id, formatAlerts(), {
+        parse_mode: "MarkdownV2",
+        reply_markup: KB.traderKb,
+      });
+    } catch {
+      // fallback without MarkdownV2
+      const plain = ALERTS.map((a, i) => `${i + 1}. ${a}`).join("\n");
+      await safeSend(query.message.chat.id,
+        `🔔 *LIVE ALERTS*\n\n${plain}`,
+        { reply_markup: KB.traderKb }
+      );
+    }
+  },
+
+  /* ── 📋 Activity Feed ── */
+  activity: async query => {
+    await answerCb(query.id, "Loading activity…");
+    try {
+      await bot.sendMessage(query.message.chat.id, formatActivityFeed(), {
+        parse_mode: "MarkdownV2",
+        reply_markup: KB.traderKb,
+      });
+    } catch {
+      // fallback
+      const lines = ACTIVITY_FEED.map((item, i) => {
+        const icon = item.type === "BUY" ? "🟢" : item.type === "SELL" ? "🔴" : "🏆";
+        return `${i + 1}. ${icon} ${item.type} ${item.token} — ${item.price} MON — ${item.addr} — ${item.time}`;
+      }).join("\n");
+      await safeSend(query.message.chat.id,
+        `📋 *ACTIVITY FEED*\n\n${lines}`,
+        { reply_markup: KB.traderKb }
+      );
+    }
+  },
+
+  /* ── 🔗 Footer ── */
+  footer: async query => {
+    await answerCb(query.id);
+    await safeSend(query.message.chat.id, formatFooter(), {
+      disable_web_page_preview: true,
+      reply_markup: KB.traderKb,
+    });
+  },
+
+  /* ── Pools ── */
   pools: async query => {
     await answerCb(query.id, "Fetching pools…");
     const loading = await safeSend(query.message.chat.id, "⏳ Fetching live vault pools…");
     if (!loading) return;
     const p = await fetchPools();
     const stale = p && Date.now() - poolCache.ts > poolCache.TTL;
-    const text = p
-      ? formatPoolText(p, stale)
-      : `⬡ *VAULT POOLS*\n\n_Could not fetch — open the app for live data._`;
+    const text = p ? formatPoolText(p, stale) : `⬡ *VAULT POOLS*\n\n_Could not fetch — open the app for live data._`;
     await safeEdit(query.message.chat.id, loading.message_id, text, { reply_markup: KB.poolsKb });
   },
 
   pools_refresh: async query => {
     await answerCb(query.id, "Refreshing…");
     const p = await fetchPools(true);
-    const text = p
-      ? formatPoolText(p)
-      : `⬡ *VAULT POOLS*\n\n_Could not fetch._`;
+    const text = p ? formatPoolText(p) : `⬡ *VAULT POOLS*\n\n_Could not fetch._`;
     await safeEdit(query.message.chat.id, query.message.message_id, text, { reply_markup: KB.poolsKb });
   },
 
@@ -465,7 +701,7 @@ const cbHandlers = {
   help: async query => {
     await answerCb(query.id);
     await safeSend(query.message.chat.id,
-      `❓ *Commands:* /start /menu /market /vault /pools /stats /contracts /links /help`,
+      `❓ *Commands:* /ticker /statsbar /alerts /activity /footer /pools /stats /contracts /help`,
       {
         reply_markup: { inline_keyboard: [
           [{ text: "🚀 Open App",  web_app: { url: WEBAPP_URL } }],
