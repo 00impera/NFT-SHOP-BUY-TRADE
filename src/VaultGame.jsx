@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { getContract, prepareContractCall, readContract } from "thirdweb";
 import { useSendTransaction, ConnectButton, BuyWidget } from "thirdweb/react";
-import { parseEther, formatEther } from "ethers/utils";
+import { parseEther, formatEther } from "ethers"; // ✅ FIXED: ethers v6 top-level import
 import { client } from "./App.jsx";
 import { MONAD, VAULT_ADDRESS, VAULT_ABI, VAULT_KEYS, VAULT_SALTS } from "./config.js";
 
