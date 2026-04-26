@@ -4,1090 +4,659 @@ import { useSendTransaction } from "thirdweb/react";
 import { formatEther, parseEther } from "ethers/utils";
 import { client } from "./App.jsx";
 import {
-  MONAD,
-  NFT_ADDRESS,
-  MARKETPLACE_ADDRESS,
-  NFT_ABI,
-  MARKETPLACE_ABI,
-  TG_BOT_URL,
+  MONAD, NFT_ADDRESS, MARKETPLACE_ADDRESS,
+  NFT_ABI, MARKETPLACE_ABI, TG_BOT_URL,
 } from "./config.js";
 
-/* ─── Design Tokens ──────────────────────────────────────────────── */
+/* ══ Design tokens (from CSS vars) ═══════════════════════════════ */
 const T = {
-  gold:    "#c9a84c",
-  goldHi:  "#f0d080",
-  cyan:    "#00c8ff",
-  green:   "#00ff88",
-  red:     "#ff4466",
-  blue:    "#29b6f6",
-  dim:     "#2a6a8a",
-  mid:     "#80b8d0",
-  bg:      "#020c14",
-  bgHover: "#040e18",
-  border:  "#0a2a3a",
+  gold: "#c9a84c", goldHi: "#f0d080", green: "#00ff88",
+  cyan: "#00c8ff", red: "#ef4444", blue: "#29b6f6",
+  dim: "#4a8aaa", mid: "#80b8d0", bg: "#020c14",
+  border: "#0a2a3a", border2: "#0d3347",
 };
 
-const STATUS_COLOR = { success: T.green, error: T.red, info: T.cyan };
-const STATUS_BG    = {
-  success: "rgba(0,255,136,0.07)",
-  error:   "rgba(255,68,102,0.07)",
-  info:    "rgba(0,200,255,0.07)",
-};
-
-/* ─── RPC helper ─────────────────────────────────────────────────── */
-const RPC_URL = "https://rpc.ankr.com/monad_mainnet";
-
-async function rpcGetBalance(address) {
-  const res = await fetch(RPC_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0", id: 1,
-      method: "eth_getBalance",
-      params: [address, "latest"],
-    }),
-  });
-  const { result } = await res.json();
-  return BigInt(result);
-}
-
-/* ─── NFT ABI (hardcoded — full verified ABI from Monadscan) ────── */
-const NFT_ABI_FULL = [
-  { "inputs": [{ "internalType": "address", "name": "owner_", "type": "address" }], "stateMutability": "nonpayable", "type": "constructor" },
-  { "inputs": [{ "internalType": "address", "name": "to", "type": "address" }, { "internalType": "uint256", "name": "tokenId", "type": "uint256" }], "name": "approve", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "address", "name": "owner", "type": "address" }], "name": "balanceOf", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "tokenId", "type": "uint256" }], "name": "getApproved", "outputs": [{ "internalType": "address", "name": "", "type": "address" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "address", "name": "owner", "type": "address" }, { "internalType": "address", "name": "operator", "type": "address" }], "name": "isApprovedForAll", "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "address", "name": "to", "type": "address" }, { "internalType": "string", "name": "uri", "type": "string" }], "name": "mint", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [], "name": "name", "outputs": [{ "internalType": "string", "name": "", "type": "string" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "nextId", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "owner", "outputs": [{ "internalType": "address", "name": "", "type": "address" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "tokenId", "type": "uint256" }], "name": "ownerOf", "outputs": [{ "internalType": "address", "name": "", "type": "address" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "renounceOwnership", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "address", "name": "from", "type": "address" }, { "internalType": "address", "name": "to", "type": "address" }, { "internalType": "uint256", "name": "tokenId", "type": "uint256" }], "name": "safeTransferFrom", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "address", "name": "from", "type": "address" }, { "internalType": "address", "name": "to", "type": "address" }, { "internalType": "uint256", "name": "tokenId", "type": "uint256" }, { "internalType": "bytes", "name": "data", "type": "bytes" }], "name": "safeTransferFrom", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "address", "name": "operator", "type": "address" }, { "internalType": "bool", "name": "approved", "type": "bool" }], "name": "setApprovalForAll", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "bytes4", "name": "interfaceId", "type": "bytes4" }], "name": "supportsInterface", "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "symbol", "outputs": [{ "internalType": "string", "name": "", "type": "string" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "tokenId", "type": "uint256" }], "name": "tokenURI", "outputs": [{ "internalType": "string", "name": "", "type": "string" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "address", "name": "from", "type": "address" }, { "internalType": "address", "name": "to", "type": "address" }, { "internalType": "uint256", "name": "tokenId", "type": "uint256" }], "name": "transferFrom", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "address", "name": "newOwner", "type": "address" }], "name": "transferOwnership", "outputs": [], "stateMutability": "nonpayable", "type": "function" }
+const IPFS_GATEWAYS = [
+  "https://gateway.pinata.cloud/ipfs/",
+  "https://cloudflare-ipfs.com/ipfs/",
+  "https://ipfs.io/ipfs/",
 ];
 
-/* ─── Error helpers ──────────────────────────────────────────────── */
 const FRIENDLY_ERRORS = [
-  [/user rejected/i,                "Transaction cancelled by wallet."],
-  [/insufficient funds/i,           "Insufficient MON balance for this transaction."],
-  [/not listed/i,                   "This token is not currently listed for sale."],
+  [/user rejected/i,                "Transaction cancelled."],
+  [/insufficient funds/i,           "Insufficient MON balance."],
+  [/not listed/i,                   "Token is not listed for sale."],
   [/not owner/i,                    "You don't own this token."],
-  [/already listed/i,               "This token is already listed."],
-  [/execution reverted/i,           "Contract call reverted — check token ID and ownership."],
-  [/network.*changed/i,             "Network changed — please reconnect your wallet."],
-  [/could not decode result data/i, "Contract returned no data — method may not exist."],
-  [/fetch/i,                        "Network error — check your connection and try again."],
+  [/already listed/i,               "Token is already listed."],
+  [/execution reverted/i,           "Contract reverted — check token ID and ownership."],
+  [/could not decode result data/i, "Contract returned no data."],
 ];
-
-export function friendlyError(err) {
+function friendlyError(err) {
   const raw = err?.message || String(err);
-  for (const [pattern, text] of FRIENDLY_ERRORS) {
-    if (pattern.test(raw)) return text;
-  }
+  for (const [p, t] of FRIENDLY_ERRORS) if (p.test(raw)) return t;
   return raw.length > 120 ? raw.slice(0, 117) + "…" : raw;
 }
 
-/* ─── Tabs ───────────────────────────────────────────────────────── */
-const TABS = [
-  { id: "buy",    label: "Buy",    icon: "⬇", desc: "Purchase a listed NFT" },
-  { id: "list",   label: "Sell",   icon: "⬆", desc: "List your NFT for sale" },
-  { id: "cancel", label: "Cancel", icon: "✕", desc: "Remove your listing" },
-  { id: "trade",  label: "Trade",  icon: "⇄", desc: "Swap NFTs peer-to-peer" },
-];
-
-/* ─── useResponsive ──────────────────────────────────────────────── */
-export function useResponsive() {
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 700);
-  useEffect(() => {
-    const fn = () => setIsMobile(window.innerWidth < 700);
-    window.addEventListener("resize", fn);
-    return () => window.removeEventListener("resize", fn);
-  }, []);
-  return { isMobile };
+/* ── IPFS helpers ─────────────────────────────────────────────── */
+function resolveIpfs(uri) {
+  if (!uri) return null;
+  if (uri.startsWith("ipfs://")) return IPFS_GATEWAYS[0] + uri.slice(7);
+  return uri;
+}
+async function fetchMetadata(tokenId, nftContract) {
+  try {
+    const uri = await readContract({ contract: nftContract, method: "tokenURI", params: [BigInt(tokenId)] });
+    if (!uri) return null;
+    let data;
+    if (uri.startsWith("data:application/json")) {
+      data = JSON.parse(atob(uri.split(",")[1]));
+    } else {
+      const url = resolveIpfs(uri);
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 8000);
+      const res = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(t);
+      if (!res.ok) return null;
+      data = await res.json();
+    }
+    return { name: data?.name ?? `#${tokenId}`, description: data?.description ?? null, image: resolveIpfs(data?.image ?? null) };
+  } catch { return null; }
 }
 
-/* ─── TgIcon ─────────────────────────────────────────────────────── */
-export const TgIcon = memo(({ size = 16 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-2.04 9.607c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.903.614z"/>
-  </svg>
-));
+/* ══ Sub-components ══════════════════════════════════════════════ */
 
-/* ─── StatusBanner ───────────────────────────────────────────────── */
-export const StatusBanner = memo(({ status, onDismiss }) => {
-  if (!status) return null;
-  const color = STATUS_COLOR[status.type];
-  const bg    = STATUS_BG[status.type];
-  const icon  = status.type === "success" ? "✓" : status.type === "error" ? "✕" : "○";
+/* Toast notifications */
+function Toast({ toasts, remove }) {
   return (
-    <div className="fade-in" role="alert" aria-live="polite" style={{
-      display: "flex", alignItems: "flex-start", gap: "10px",
-      background: bg, border: `1px solid ${color}22`,
-      borderLeft: `3px solid ${color}`,
-      borderRadius: "10px", padding: "12px 14px", marginBottom: "16px",
-    }}>
-      <span style={{ color, fontSize: "13px", flexShrink: 0, marginTop: "1px" }} aria-hidden="true">{icon}</span>
-      <span style={{ color, fontSize: "12px", flex: 1, lineHeight: 1.6 }}>{status.m}</span>
-      <button onClick={onDismiss} aria-label="Dismiss message"
-        style={{ background: "none", border: "none", color: T.dim, fontSize: "18px", cursor: "pointer", lineHeight: 1, padding: "0 2px" }}>×</button>
-    </div>
-  );
-});
-
-/* ─── Stat ───────────────────────────────────────────────────────── */
-export const Stat = memo(({ label, value, accent, last }) => (
-  <div style={{ textAlign: "center", padding: "0 20px", borderRight: last ? "none" : `1px solid ${T.border}` }}>
-    <div style={{ fontSize: "9px", color: T.dim, letterSpacing: "2px", marginBottom: "5px" }}>{label}</div>
-    <div style={{ fontFamily: "Cinzel, serif", fontWeight: 700, fontSize: "18px", color: accent || T.gold, lineHeight: 1 }}>{value}</div>
-  </div>
-));
-
-/* ─── MarketStats ────────────────────────────────────────────────── */
-// Only calls methods that actually exist on the contract:
-// FEE_BPS() and eth_getBalance (native MON held by the contract).
-// Volume / floor / listed-count have no on-chain getter → shown as "—".
-export const MarketStats = memo(({ mkt, onVaultPool, isMobile }) => {
-  const [stats,    setStats]    = useState({ fee: "—", vault: "—", volume: "—", listed: "—" });
-  const [loading,  setLoading]  = useState(true);
-  const [fetchErr, setFetchErr] = useState(false);
-
-  const fetchStats = useCallback(async () => {
-    setLoading(true); setFetchErr(false);
-    try {
-      const [feeBps, weiBalance] = await Promise.all([
-        readContract({ contract: mkt, method: "FEE_BPS", params: [] }).catch(() => null),
-        rpcGetBalance(MARKETPLACE_ADDRESS).catch(() => null),
-      ]);
-
-      const vaultMon = weiBalance != null
-        ? (Number(weiBalance) / 1e18).toFixed(4) + " MON"
-        : "—";
-
-      setStats({
-        fee:    feeBps != null ? `${feeBps.toString()} bps` : "—",
-        vault:  vaultMon,
-        volume: "—",   // no on-chain counter
-        listed: "—",   // no on-chain counter
-      });
-    } catch (_) { setFetchErr(true); }
-    setLoading(false);
-  }, [mkt]);
-
-  useEffect(() => { fetchStats(); }, [fetchStats]);
-  const dot = loading ? "…" : undefined;
-
-  return (
-    <section aria-label="Market statistics" style={{
-      display: "flex", flexDirection: isMobile ? "column" : "row",
-      alignItems: isMobile ? "flex-start" : "center",
-      justifyContent: "space-between", gap: isMobile ? "14px" : 0,
-      background: T.bg, border: `1px solid ${T.border}`, borderRadius: "12px",
-      padding: isMobile ? "16px" : "16px 24px", marginBottom: "18px",
-      boxShadow: "0 0 40px rgba(0,0,0,0.6)",
-    }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: isMobile ? "16px 0" : 0 }}>
-        <Stat label="FEE RATE"   value={dot || stats.fee}    />
-        <Stat label="VAULT POOL" value={dot || stats.vault}  accent={T.green} />
-        <Stat label="VOLUME"     value={dot || stats.volume} accent={T.cyan} />
-        <Stat label="LISTED"     value={dot || stats.listed} accent={T.mid} last />
-      </div>
-      <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-        {fetchErr && (
-          <button onClick={fetchStats} aria-label="Retry loading market stats"
-            style={{ fontSize: "10px", color: T.red, background: "none", border: `1px solid ${T.red}44`, borderRadius: "6px", padding: "6px 10px", cursor: "pointer" }}>
-            ↻ Retry
-          </button>
-        )}
-        <button onClick={onVaultPool} aria-label="View Vault Pool details" style={{
-          padding: "10px 20px", borderRadius: "8px",
-          border: "1px solid rgba(0,255,136,0.3)", background: "rgba(0,255,136,0.08)",
-          color: T.green, fontFamily: "Cinzel, serif", fontSize: "11px", letterSpacing: "1.5px",
-          cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap",
-        }}
-          onMouseEnter={e => { e.currentTarget.style.background = "rgba(0,255,136,0.18)"; e.currentTarget.style.boxShadow = "0 0 16px rgba(0,255,136,0.25)"; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "rgba(0,255,136,0.08)"; e.currentTarget.style.boxShadow = "none"; }}
-        >◈ VAULT POOL</button>
-      </div>
-    </section>
-  );
-});
-
-/* ─── VaultPoolModal ─────────────────────────────────────────────── */
-// Fetches native MON balance of the marketplace contract via eth_getBalance.
-// No ABI method needed — works on any EVM chain.
-export const VaultPoolModal = memo(({ onClose }) => {
-  const [balance, setBalance] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [err,     setErr]     = useState(false);
-  const modalRef = useRef(null);
-
-  const load = useCallback(async () => {
-    setLoading(true); setErr(false);
-    try {
-      const wei = await rpcGetBalance(MARKETPLACE_ADDRESS);
-      const mon = (Number(wei) / 1e18).toFixed(4);
-      setBalance(mon);
-    } catch (_) { setErr(true); }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  // Focus trap
-  useEffect(() => {
-    const el = modalRef.current;
-    if (!el) return;
-    const focusable = el.querySelectorAll("button,[href],input,[tabindex]");
-    focusable[0]?.focus();
-    const trap = e => {
-      if (e.key !== "Tab") return;
-      const first = focusable[0], last = focusable[focusable.length - 1];
-      if (e.shiftKey ? document.activeElement === first : document.activeElement === last) {
-        e.preventDefault(); (e.shiftKey ? last : first)?.focus();
-      }
-    };
-    el.addEventListener("keydown", trap);
-    return () => el.removeEventListener("keydown", trap);
-  }, []);
-
-  return (
-    <div role="dialog" aria-modal="true" aria-labelledby="vault-title" style={{
-      position: "fixed", inset: 0, zIndex: 100,
-      background: "rgba(0,5,10,0.85)", backdropFilter: "blur(6px)",
-      display: "flex", alignItems: "center", justifyContent: "center", padding: "16px",
-    }} onClick={onClose} onKeyDown={e => e.key === "Escape" && onClose()}>
-      <div ref={modalRef} onClick={e => e.stopPropagation()} style={{
-        background: T.bg, border: "1px solid #0a3a2a", borderRadius: "16px",
-        padding: "32px 36px", minWidth: "320px", maxWidth: "420px", width: "100%",
-        boxShadow: "0 0 60px rgba(0,255,136,0.12)",
-      }}>
-        <div id="vault-title" style={{ fontFamily: "Cinzel, serif", fontSize: "16px", color: T.green, letterSpacing: "3px", marginBottom: "6px" }}>◈ VAULT POOL</div>
-        <p style={{ fontSize: "10px", color: T.dim, marginBottom: "20px", lineHeight: 1.7 }}>
-          Marketplace fees accumulate in the contract. The balance shown is the total MON held by the marketplace contract on-chain.
-        </p>
-
-        {/* Balance card */}
-        <div style={{ background: "rgba(0,255,136,0.06)", border: "1px solid rgba(0,255,136,0.18)", borderRadius: "10px", padding: "22px 20px", textAlign: "center", marginBottom: "14px" }}>
-          <div style={{ fontSize: "9px", color: T.dim, letterSpacing: "2px", marginBottom: "8px" }}>CONTRACT BALANCE</div>
-          {loading && (
-            <div style={{ color: T.dim, fontSize: "12px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
-              <span style={{ animation: "spin 1.2s linear infinite", display: "inline-block" }}>◌</span> Fetching…
-            </div>
-          )}
-          {err && (
-            <div>
-              <div style={{ color: T.red, fontSize: "11px", marginBottom: "10px" }}>Could not fetch balance — RPC error.</div>
-              <button onClick={load} style={{ fontSize: "10px", color: T.cyan, background: "none", border: `1px solid ${T.cyan}44`, borderRadius: "6px", padding: "5px 12px", cursor: "pointer" }}>↻ Retry</button>
-            </div>
-          )}
-          {!loading && !err && balance != null && (
-            <div style={{ fontFamily: "Cinzel, serif", fontWeight: 700, fontSize: "32px", color: T.green, lineHeight: 1 }}>
-              {balance}
-              <span style={{ fontSize: "15px", color: T.mid, marginLeft: "8px" }}>MON</span>
-            </div>
-          )}
-        </div>
-
-        {/* Contract link */}
-        <a href={`https://monadscan.com/address/${MARKETPLACE_ADDRESS}`} target="_blank" rel="noreferrer"
-          style={{ display: "block", textAlign: "center", fontSize: "10px", color: T.dim, fontFamily: "Share Tech Mono, monospace", textDecoration: "none", marginBottom: "18px" }}
-          onMouseEnter={e => e.target.style.color = T.cyan}
-          onMouseLeave={e => e.target.style.color = T.dim}
-        >
-          ↗ View contract on Monadscan
-        </a>
-
-        <button onClick={onClose} aria-label="Close vault pool dialog" style={{
-          width: "100%", padding: "11px", borderRadius: "8px",
-          border: `1px solid ${T.border}`, background: "transparent", color: T.dim,
-          fontSize: "11px", cursor: "pointer", transition: "all 0.15s",
-        }}
-          onMouseEnter={e => { e.currentTarget.style.background = T.bgHover; e.currentTarget.style.color = T.mid; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = T.dim; }}
-        >Close</button>
-      </div>
-    </div>
-  );
-});
-
-/* ─── Panel ──────────────────────────────────────────────────────── */
-export const Panel = memo(({ title, desc, children }) => (
-  <div className="fade-in" style={{ background: T.bg, border: `1px solid ${T.border}`, borderRadius: "14px", padding: "26px 24px 22px" }}>
-    <div style={{ marginBottom: "20px" }}>
-      <h3 style={{ fontFamily: "Cinzel, serif", fontWeight: 700, fontSize: "16px", color: T.gold, letterSpacing: "2px", margin: "0 0 4px" }}>{title}</h3>
-      <p style={{ fontSize: "10px", color: T.dim, lineHeight: 1.5, margin: 0 }}>{desc}</p>
-    </div>
-    {children}
-  </div>
-));
-
-/* ─── Field ──────────────────────────────────────────────────────── */
-export const Field = memo(({ label, placeholder, value, onChange, type = "text", id }) => {
-  const [focused, setFocused] = useState(false);
-  const inputId = id || `field-${label.replace(/\s+/g, "-").toLowerCase()}`;
-  return (
-    <div style={{ marginBottom: "14px" }}>
-      <label htmlFor={inputId} style={{ display: "block", fontSize: "9px", color: T.dim, letterSpacing: "1.5px", marginBottom: "6px" }}>
-        {label.toUpperCase()}
-      </label>
-      <input id={inputId} type={type} value={value} onChange={onChange} placeholder={placeholder}
-        onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
-        style={{
-          width: "100%", padding: "10px 12px", boxSizing: "border-box",
-          background: focused ? T.bgHover : T.bg,
-          border: `1px solid ${focused ? T.gold : T.border}`,
-          borderRadius: "8px", color: T.mid, fontSize: "13px",
-          outline: "none", transition: "all 0.15s", fontFamily: "Share Tech Mono, monospace",
-        }}
-      />
-    </div>
-  );
-});
-
-/* ─── Buttons ────────────────────────────────────────────────────── */
-export function PrimaryBtn({ onClick, children, loading, ariaLabel }) {
-  const [h, setH] = useState(false);
-  return (
-    <button onClick={onClick} disabled={loading}
-      aria-label={ariaLabel || (typeof children === "string" ? children : undefined)} aria-busy={loading}
-      onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
-      style={{
-        width: "100%", padding: "13px", borderRadius: "8px", border: "none",
-        fontFamily: "Cinzel, serif", fontSize: "12px", fontWeight: 700, letterSpacing: "2px",
-        cursor: loading ? "not-allowed" : "pointer",
-        background: loading ? "#3a2a00" : h ? `linear-gradient(135deg,#7a4a00,${T.goldHi})` : `linear-gradient(135deg,#7a4a00,${T.gold})`,
-        color: "#000", transform: h && !loading ? "translateY(-1px)" : "none",
-        boxShadow: h && !loading ? "0 6px 24px rgba(201,168,76,0.4)" : "none",
-        transition: "all 0.15s", opacity: loading ? 0.7 : 1,
-      }}
-    >{loading ? "Processing…" : children}</button>
-  );
-}
-
-export function GhostBtn({ onClick, children, ariaLabel }) {
-  const [h, setH] = useState(false);
-  return (
-    <button onClick={onClick} aria-label={ariaLabel || (typeof children === "string" ? children : undefined)}
-      onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
-      style={{
-        width: "100%", padding: "9px", borderRadius: "8px", border: `1px solid ${T.border}`,
-        background: h ? T.bgHover : "transparent", color: h ? T.mid : T.dim,
-        fontSize: "11px", marginBottom: "12px", letterSpacing: "0.5px", cursor: "pointer", transition: "all 0.15s",
-      }}
-    >{children}</button>
-  );
-}
-
-export function GreenBtn({ onClick, children, loading, ariaLabel }) {
-  const [h, setH] = useState(false);
-  return (
-    <button onClick={onClick} disabled={loading}
-      aria-label={ariaLabel || (typeof children === "string" ? children : undefined)} aria-busy={loading}
-      onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
-      style={{
-        width: "100%", padding: "13px", borderRadius: "8px",
-        border: "1px solid rgba(0,255,136,0.28)",
-        background: h ? "rgba(0,255,136,0.15)" : "rgba(0,255,136,0.07)",
-        color: T.green, fontSize: "12px", fontFamily: "Cinzel, serif",
-        letterSpacing: "2px", cursor: loading ? "not-allowed" : "pointer",
-        transition: "all 0.15s", opacity: loading ? 0.7 : 1,
-      }}
-    >{loading ? "Processing…" : children}</button>
-  );
-}
-
-export function DangerBtn({ onClick, children, loading, ariaLabel }) {
-  const [h, setH] = useState(false);
-  return (
-    <button onClick={onClick} disabled={loading}
-      aria-label={ariaLabel || (typeof children === "string" ? children : undefined)} aria-busy={loading}
-      onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
-      style={{
-        width: "100%", padding: "13px", borderRadius: "8px",
-        border: "1px solid rgba(255,68,102,0.28)",
-        background: h ? "rgba(255,68,102,0.15)" : "rgba(255,68,102,0.07)",
-        color: T.red, fontSize: "12px", fontFamily: "Cinzel, serif",
-        letterSpacing: "2px", cursor: loading ? "not-allowed" : "pointer",
-        transition: "all 0.15s", opacity: loading ? 0.7 : 1,
-      }}
-    >{loading ? "Processing…" : children}</button>
-  );
-}
-
-export function StepBtn({ step, label, color, onClick, loading, ariaLabel }) {
-  const [h, setH] = useState(false);
-  return (
-    <button onClick={onClick} disabled={loading}
-      aria-label={ariaLabel || `Step ${step}: ${label}`} aria-busy={loading}
-      onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
-      style={{
-        padding: "12px", borderRadius: "8px", border: `1px solid ${color}33`,
-        background: h ? `${color}1a` : `${color}0a`, color,
-        fontSize: "11px", fontFamily: "Share Tech Mono, monospace",
-        cursor: loading ? "not-allowed" : "pointer", transition: "all 0.15s", opacity: loading ? 0.7 : 1,
-      }}
-    >
-      <span style={{ opacity: 0.5, marginRight: "5px" }} aria-hidden="true">Step {step} —</span>
-      {loading ? "…" : label}
-    </button>
-  );
-}
-
-/* ─── Sidebar ────────────────────────────────────────────────────── */
-export const Sidebar = memo(({ tab, setTab, setStatus, setListing, isMobile }) => (
-  <nav aria-label="Marketplace actions" style={{ background: T.bg, border: `1px solid ${T.border}`, borderRadius: "14px", overflow: "hidden" }}>
-    {!isMobile && (
-      <div style={{ padding: "13px 16px", borderBottom: `1px solid ${T.border}` }}>
-        <div style={{ fontSize: "9px", color: T.dim, letterSpacing: "2px" }}>ACTIONS</div>
-      </div>
-    )}
-    <ul role="tablist" aria-label="Action tabs" style={{ margin: 0, padding: 0, listStyle: "none", display: isMobile ? "flex" : "block" }}>
-      {TABS.map(t => (
-        <li key={t.id} role="none" style={{ flex: isMobile ? 1 : undefined }}>
-          <button role="tab" aria-selected={tab === t.id} aria-label={`${t.label} — ${t.desc}`}
-            onClick={() => { setTab(t.id); setStatus(null); setListing(null); }}
-            style={{
-              display: "flex", alignItems: "center", justifyContent: isMobile ? "center" : "flex-start",
-              gap: isMobile ? "6px" : "12px", width: "100%",
-              padding: isMobile ? "10px 8px" : "12px 16px", border: "none",
-              background: tab === t.id ? "rgba(201,168,76,0.1)" : "transparent",
-              color: tab === t.id ? T.gold : T.dim,
-              fontSize: isMobile ? "11px" : "12px", letterSpacing: "1px", textAlign: "left",
-              borderLeft: isMobile ? "none" : (tab === t.id ? `2px solid ${T.gold}` : "2px solid transparent"),
-              borderBottom: isMobile ? (tab === t.id ? `2px solid ${T.gold}` : "2px solid transparent") : "none",
-              cursor: "pointer", transition: "all 0.12s",
-            }}
-            onMouseEnter={e => { if (tab !== t.id) { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; e.currentTarget.style.color = T.mid; } }}
-            onMouseLeave={e => { if (tab !== t.id) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = T.dim; } }}
-          >
-            <span style={{ fontSize: "14px", opacity: 0.6, width: "16px", textAlign: "center" }} aria-hidden="true">{t.icon}</span>
-            {isMobile
-              ? <span>{t.label}</span>
-              : <div><div>{t.label}</div><div style={{ fontSize: "9px", color: "#1a4a5a", marginTop: "1px" }}>{t.desc}</div></div>
-            }
-          </button>
-        </li>
-      ))}
-    </ul>
-    {!isMobile && (
-      <div style={{ padding: "14px 16px", borderTop: `1px solid ${T.border}`, marginTop: "6px" }}>
-        <div style={{ fontSize: "9px", color: T.dim, letterSpacing: "1.5px", marginBottom: "10px" }}>CONTRACTS</div>
-        {[["NFT", NFT_ADDRESS], ["Market", MARKETPLACE_ADDRESS]].map(([label, addr]) => (
-          <div key={label} style={{ marginBottom: "8px" }}>
-            <div style={{ fontSize: "9px", color: T.mid, marginBottom: "2px" }}>{label}</div>
-            <a href={`https://monadscan.com/address/${addr}`} target="_blank" rel="noreferrer"
-              aria-label={`View ${label} contract on Monadscan`}
-              style={{ fontSize: "9px", color: T.dim, fontFamily: "Share Tech Mono, monospace", textDecoration: "none" }}
-              onMouseEnter={e => e.target.style.color = T.gold}
-              onMouseLeave={e => e.target.style.color = T.dim}
-            >{addr.slice(0, 8)}…{addr.slice(-6)}</a>
-          </div>
-        ))}
-      </div>
-    )}
-  </nav>
-));
-
-/* ═══════════════════════════════════════════════════════════════════
-   BuyPanel — OpenSea-style card
-   ══════════════════════════════════════════════════════════════════ */
-function BuyPanel({ buyId, setBuyId, listing, setListing, meta, metaLoading, onBuy, onCheck, loading, copied, setCopied }) {
-  const timerRef = useRef(null);
-
-  function handleTokenChange(e) {
-    const val = e.target.value.replace(/[^0-9]/g, "");
-    setBuyId(val);
-    setListing(null);
-    clearTimeout(timerRef.current);
-    if (val) timerRef.current = setTimeout(() => onCheck(val), 600);
-  }
-
-  function handleCopy() {
-    const url = window.location.origin + window.location.pathname + "?token=" + buyId;
-    navigator.clipboard.writeText(url).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }
-
-  const hasListing = listing?.active;
-  const notListed  = listing && !listing.active;
-
-  return (
-    <div className="fade-in" style={{ background: T.bg, border: `1px solid ${T.border}`, borderRadius: "18px", overflow: "hidden" }}>
-
-      {/* ── Header ── */}
-      <div style={{ padding: "18px 24px 14px", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div>
-          <h3 style={{ fontFamily: "Cinzel, serif", fontWeight: 700, fontSize: "15px", color: T.gold, letterSpacing: "2px", margin: 0 }}>Buy an NFT</h3>
-          <p style={{ fontSize: "10px", color: T.dim, margin: "3px 0 0" }}>Enter a token ID — price and artwork load automatically</p>
-        </div>
-        {buyId && (
-          <a href={`https://monadscan.com/token/${NFT_ADDRESS}?a=${buyId}`} target="_blank" rel="noreferrer"
-            style={{ fontSize: "10px", color: T.cyan, textDecoration: "none", display: "flex", alignItems: "center", gap: "4px" }}>
-            ↗ Monadscan
-          </a>
-        )}
-      </div>
-
-      {/* ── Body: artwork + info ── */}
-      <div style={{ display: "flex", flexWrap: "wrap", minHeight: "280px" }}>
-
-        {/* Left — artwork */}
-        <div style={{
-          width: "240px", minWidth: "180px", flexShrink: 0,
-          background: "#010a12", borderRight: `1px solid ${T.border}`,
-          position: "relative", overflow: "hidden",
-          display: "flex", alignItems: "center", justifyContent: "center", minHeight: "280px",
+    <div style={{ position: "fixed", bottom: "24px", right: "24px", zIndex: 200, display: "flex", flexDirection: "column", gap: "8px", pointerEvents: "none" }}>
+      {toasts.map(t => (
+        <div key={t.id} className="scale-in" onClick={() => remove(t.id)} style={{
+          display: "flex", alignItems: "flex-start", gap: "10px",
+          background: t.type === "success" ? "rgba(0,255,136,0.12)" : t.type === "error" ? "rgba(239,68,68,0.12)" : "rgba(0,200,255,0.10)",
+          border: `1px solid ${t.type === "success" ? "rgba(0,255,136,0.35)" : t.type === "error" ? "rgba(239,68,68,0.35)" : "rgba(0,200,255,0.35)"}`,
+          borderLeft: `3px solid ${t.type === "success" ? T.green : t.type === "error" ? T.red : T.cyan}`,
+          borderRadius: "10px", padding: "12px 16px", maxWidth: "340px",
+          backdropFilter: "blur(8px)", boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+          cursor: "pointer", pointerEvents: "auto",
+          color: t.type === "success" ? T.green : t.type === "error" ? T.red : T.cyan,
+          fontSize: "12px", lineHeight: 1.55,
         }}>
-          {metaLoading && (
-            <div style={{ textAlign: "center", color: T.dim }}>
-              <div style={{ fontSize: "28px", animation: "spin 1.2s linear infinite", display: "inline-block", marginBottom: "8px" }}>◌</div>
-              <div style={{ fontSize: "10px", letterSpacing: "2px" }}>LOADING…</div>
+          <span style={{ flexShrink: 0, marginTop: "1px" }}>
+            {t.type === "success" ? "✓" : t.type === "error" ? "✕" : "○"}
+          </span>
+          <span>{t.message}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function useToasts() {
+  const [toasts, setToasts] = useState([]);
+  const add = useCallback((message, type = "success") => {
+    const id = Date.now();
+    setToasts(p => [...p, { id, message, type }]);
+    setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 4500);
+  }, []);
+  const remove = useCallback(id => setToasts(p => p.filter(t => t.id !== id)), []);
+  return { toasts, add, remove };
+}
+
+/* Validated input with inline error */
+const ValidInput = memo(function ValidInput({ label, placeholder, value, onChange, type = "text", id, validate, hint, inputMode }) {
+  const [touched, setTouched] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const err = touched && validate ? validate(value) : null;
+  return (
+    <div className="field-wrap">
+      <label htmlFor={id} className="field-label">{label}</label>
+      {hint && <p style={{ fontSize: "10px", color: T.dim, marginBottom: "6px", marginTop: "-4px" }}>{hint}</p>}
+      <input
+        id={id} type={type} inputMode={inputMode}
+        value={value} onChange={onChange} placeholder={placeholder}
+        onFocus={() => setFocused(true)}
+        onBlur={() => { setFocused(true); setTouched(true); }}
+        className="field-input"
+        style={{ borderColor: err ? T.red : focused ? T.gold : undefined }}
+      />
+      {err && <p style={{ fontSize: "10px", color: T.red, marginTop: "5px" }}>⚠ {err}</p>}
+    </div>
+  );
+});
+
+/* Progress step indicator */
+function StepIndicator({ steps, current }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "0", marginBottom: "22px" }}>
+      {steps.map((s, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", flex: i < steps.length - 1 ? 1 : 0 }}>
+          <div style={{ display: "flex", flex: "0 0 auto", flexDirection: "column", alignItems: "center", gap: "4px" }}>
+            <div style={{
+              width: "28px", height: "28px", borderRadius: "50%",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: "11px", fontWeight: 700, transition: "all 0.3s",
+              background: i < current ? T.green : i === current ? "rgba(201,168,76,0.2)" : "transparent",
+              border: `1.5px solid ${i < current ? T.green : i === current ? T.gold : T.border}`,
+              color: i < current ? "#000" : i === current ? T.gold : T.dim,
+            }}>
+              {i < current ? "✓" : i + 1}
             </div>
-          )}
-          {!metaLoading && meta?.image && (
-            <>
-              <img src={meta.image}
-                alt={meta.name ? `${meta.name} NFT artwork` : `Token #${buyId} artwork`}
-                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", position: "absolute", inset: 0 }}
-                onError={e => { e.target.style.display = "none"; }}
-              />
-              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(2,12,20,0.85) 0%, transparent 55%)" }} />
-              <div style={{
-                position: "absolute", bottom: "14px", left: "14px",
-                background: "rgba(2,12,20,0.75)", backdropFilter: "blur(4px)",
-                border: `1px solid ${T.border}`, borderRadius: "6px",
-                padding: "4px 10px", fontFamily: "Share Tech Mono, monospace", fontSize: "11px", color: T.gold,
-              }}>#{buyId}</div>
-            </>
-          )}
-          {!metaLoading && !meta?.image && (
-            <div style={{ textAlign: "center", color: T.border }}>
-              <div style={{ fontSize: "48px", marginBottom: "8px" }}>◈</div>
-              {buyId
-                ? <div style={{ fontSize: "10px", color: T.dim, letterSpacing: "1px" }}>No artwork</div>
-                : <div style={{ fontSize: "10px", color: T.dim, letterSpacing: "1px" }}>Enter ID</div>
-              }
-            </div>
+            <span style={{ fontSize: "9px", color: i === current ? T.gold : T.dim, letterSpacing: "0.5px", whiteSpace: "nowrap" }}>{s}</span>
+          </div>
+          {i < steps.length - 1 && (
+            <div style={{ flex: 1, height: "1px", background: i < current ? T.green : T.border, margin: "0 8px", marginBottom: "18px", transition: "background 0.3s" }} />
           )}
         </div>
+      ))}
+    </div>
+  );
+}
 
-        {/* Right — info */}
-        <div style={{ flex: 1, minWidth: "260px", padding: "24px 26px", display: "flex", flexDirection: "column", gap: "18px" }}>
-
-          {/* Token ID input */}
-          <div>
-            <label htmlFor="buy-token-id" style={{ display: "block", fontSize: "9px", color: T.dim, letterSpacing: "1.5px", marginBottom: "7px" }}>TOKEN ID</label>
-            <input
-              id="buy-token-id"
-              value={buyId}
-              onChange={handleTokenChange}
-              placeholder="e.g. 42"
-              inputMode="numeric"
-              style={{
-                width: "100%", padding: "11px 14px", boxSizing: "border-box",
-                background: T.bgHover, border: `1px solid ${buyId ? T.gold : T.border}`,
-                borderRadius: "8px", color: T.mid, fontSize: "15px",
-                outline: "none", fontFamily: "Share Tech Mono, monospace",
-                transition: "border-color 0.15s",
-              }}
-            />
-          </div>
-
-          {/* NFT name + description */}
-          {meta && (
-            <div className="fade-in">
-              <div style={{ fontFamily: "Cinzel, serif", fontSize: "17px", fontWeight: 700, color: T.gold, marginBottom: "5px" }}>
-                {meta.name || `Token #${buyId}`}
-              </div>
-              {meta.description && (
-                <p style={{
-                  fontSize: "11px", color: T.dim, lineHeight: 1.65, margin: 0,
-                  display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
-                }}>{meta.description}</p>
-              )}
-            </div>
-          )}
-
-          {/* Price card */}
-          {hasListing && (
-            <div className="fade-in" style={{
-              background: "rgba(0,255,136,0.06)", border: "1px solid rgba(0,255,136,0.2)",
-              borderRadius: "10px", padding: "14px 20px",
-              display: "flex", justifyContent: "space-between", alignItems: "center",
-            }}>
-              <div>
-                <div style={{ fontSize: "9px", color: T.dim, letterSpacing: "2px", marginBottom: "5px" }}>PRICE</div>
-                <div style={{ fontFamily: "Cinzel, serif", fontWeight: 700, fontSize: "28px", color: T.green, lineHeight: 1 }}>
-                  {listing.price}
-                  <span style={{ fontSize: "14px", color: T.mid, marginLeft: "7px" }}>MON</span>
-                </div>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: "9px", color: T.dim, letterSpacing: "2px", marginBottom: "5px" }}>SELLER</div>
-                <a href={`https://monadscan.com/address/${listing.seller}`} target="_blank" rel="noreferrer"
-                  style={{ fontSize: "11px", color: T.cyan, fontFamily: "Share Tech Mono, monospace", textDecoration: "none" }}>
-                  {listing.seller.slice(0, 8)}…{listing.seller.slice(-6)}
-                </a>
-              </div>
-            </div>
-          )}
-
-          {/* Not listed warning */}
-          {notListed && (
-            <div className="fade-in" style={{
-              background: "rgba(255,68,102,0.06)", border: "1px solid rgba(255,68,102,0.2)",
-              borderRadius: "10px", padding: "12px 16px",
-              display: "flex", alignItems: "center", gap: "10px",
-            }}>
-              <span style={{ color: T.red, fontSize: "16px" }}>✕</span>
-              <span style={{ color: T.red, fontSize: "12px" }}>Token #{buyId} is not listed for sale.</span>
-            </div>
-          )}
-
-          <div style={{ flex: 1 }} />
-
-          {/* Buy button */}
-          <button
-            onClick={onBuy}
-            disabled={!hasListing || loading}
-            aria-label={hasListing ? `Buy token ${buyId} for ${listing.price} MON` : "Token not available"}
-            aria-busy={loading}
-            style={{
-              width: "100%", padding: "16px", borderRadius: "10px", border: "none",
-              fontFamily: "Cinzel, serif", fontSize: "13px", fontWeight: 700, letterSpacing: "2.5px",
-              cursor: hasListing && !loading ? "pointer" : "not-allowed",
-              background: hasListing
-                ? loading ? "rgba(0,255,136,0.2)" : "linear-gradient(135deg, #005a30, #00ff88)"
-                : "rgba(255,255,255,0.04)",
-              color: hasListing ? "#000" : T.border,
-              transition: "all 0.2s",
-              boxShadow: hasListing && !loading ? "0 4px 24px rgba(0,255,136,0.3)" : "none",
-            }}
-            onMouseEnter={e => { if (hasListing && !loading) e.currentTarget.style.transform = "translateY(-1px)"; }}
-            onMouseLeave={e => { e.currentTarget.style.transform = "none"; }}
-          >
-            {loading ? "Processing…" : hasListing ? `Buy for ${listing.price} MON` : "Buy Now"}
-          </button>
-
-          {/* Action row */}
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button onClick={handleCopy} disabled={!buyId} aria-label="Copy shareable link"
-              style={{
-                flex: 1, padding: "9px 0", borderRadius: "7px", border: `1px solid ${T.border}`,
-                background: "transparent", color: copied ? T.green : T.dim,
-                fontSize: "11px", cursor: buyId ? "pointer" : "not-allowed",
-                transition: "all 0.15s", letterSpacing: "0.5px",
-              }}
-              onMouseEnter={e => { if (buyId) e.currentTarget.style.borderColor = T.cyan; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; }}
-            >
-              {copied ? "✓ Copied!" : "⤴ Share"}
-            </button>
-
-            <a href={buyId ? `https://monadscan.com/token/${NFT_ADDRESS}?a=${buyId}` : "#"}
-              target="_blank" rel="noreferrer"
-              style={{
-                flex: 1, padding: "9px 0", borderRadius: "7px", border: `1px solid ${T.border}`,
-                background: "transparent", color: T.dim, fontSize: "11px",
-                textDecoration: "none", textAlign: "center",
-                transition: "all 0.15s", letterSpacing: "0.5px",
-                pointerEvents: buyId ? "auto" : "none",
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = T.gold; e.currentTarget.style.color = T.gold; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.dim; }}
-            >
-              ↗ Explorer
-            </a>
-
-            <button aria-label="Favourite (coming soon)"
-              style={{
-                padding: "9px 14px", borderRadius: "7px", border: `1px solid ${T.border}`,
-                background: "transparent", color: T.dim, fontSize: "16px", cursor: "pointer", transition: "all 0.15s",
-              }}
-              onMouseEnter={e => { e.currentTarget.style.color = "#ff6688"; e.currentTarget.style.borderColor = "#ff668844"; }}
-              onMouseLeave={e => { e.currentTarget.style.color = T.dim; e.currentTarget.style.borderColor = T.border; }}
-            >♡</button>
-          </div>
-
+/* NFT preview card (used in Buy panel) */
+function NftPreviewCard({ tokenId, meta, metaLoading, listing }) {
+  const [imgErr, setImgErr] = useState(false);
+  if (!tokenId) return (
+    <div style={{ background: "#010a12", borderRadius: "12px", aspectRatio: "1", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "10px", color: T.border }}>
+      <span style={{ fontSize: "40px" }}>◈</span>
+      <span style={{ fontSize: "10px", color: T.dim, letterSpacing: "2px" }}>ENTER TOKEN ID</span>
+    </div>
+  );
+  if (metaLoading) return (
+    <div style={{ background: "#010a12", borderRadius: "12px", aspectRatio: "1", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "12px" }}>
+      <div style={{ width: "32px", height: "32px", border: `2px solid ${T.border}`, borderTop: `2px solid ${T.gold}`, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+      <span style={{ fontSize: "10px", color: T.dim }}>Loading…</span>
+    </div>
+  );
+  return (
+    <div style={{ borderRadius: "12px", overflow: "hidden", aspectRatio: "1", position: "relative", background: "#010a12" }}>
+      {meta?.image && !imgErr ? (
+        <>
+          <img src={meta.image} alt={meta.name} onError={() => setImgErr(true)}
+            style={{ width: "100%", height: "100%", objectFit: "cover", position: "absolute", inset: 0 }} />
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(2,12,20,0.85) 0%, transparent 55%)" }} />
+        </>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", fontSize: "40px", color: T.border }}>◈</div>
+      )}
+      <div style={{ position: "absolute", bottom: "10px", left: "10px" }}>
+        <div style={{ background: "rgba(2,12,20,0.8)", backdropFilter: "blur(6px)", border: `1px solid ${T.border}`, borderRadius: "6px", padding: "4px 10px", fontFamily: "Share Tech Mono, monospace", fontSize: "11px", color: T.gold }}>
+          #{tokenId}
         </div>
+      </div>
+      {listing?.active && (
+        <div style={{ position: "absolute", top: "10px", right: "10px", background: "rgba(0,255,136,0.15)", border: "1px solid rgba(0,255,136,0.35)", borderRadius: "5px", padding: "3px 8px", fontSize: "9px", letterSpacing: "1.5px", color: T.green }}>
+          FOR SALE
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Listing info row */
+function ListingInfo({ listing, tokenId }) {
+  if (!listing) return null;
+  if (!listing.active) return (
+    <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "12px 16px", background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: "10px" }}>
+      <span style={{ color: T.red }}>✕</span>
+      <span style={{ color: T.red, fontSize: "12px" }}>Token #{tokenId} is not listed for sale.</span>
+    </div>
+  );
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 18px", background: "rgba(0,255,136,0.06)", border: "1px solid rgba(0,255,136,0.22)", borderRadius: "12px" }}>
+      <div>
+        <div style={{ fontSize: "9px", color: T.dim, letterSpacing: "2px", marginBottom: "5px" }}>PRICE</div>
+        <div style={{ fontFamily: "Cinzel, serif", fontWeight: 700, fontSize: "26px", color: T.green, lineHeight: 1 }}>
+          {listing.price} <span style={{ fontSize: "13px", color: T.mid }}>MON</span>
+        </div>
+      </div>
+      <div style={{ textAlign: "right" }}>
+        <div style={{ fontSize: "9px", color: T.dim, letterSpacing: "2px", marginBottom: "5px" }}>SELLER</div>
+        <a href={`https://monadscan.com/address/${listing.seller}`} target="_blank" rel="noreferrer"
+          style={{ fontSize: "11px", color: T.cyan, fontFamily: "Share Tech Mono, monospace", textDecoration: "none" }}>
+          {listing.seller.slice(0, 8)}…{listing.seller.slice(-6)}
+        </a>
       </div>
     </div>
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════════
-   MAIN MARKETPLACE
-   ══════════════════════════════════════════════════════════════════ */
-export default function Marketplace({ account }) {
-  const { isMobile } = useResponsive();
-
-  const [tab,       setTab]       = useState("buy");
-  const [status,    setStatus]    = useState(null);
-  const [listing,   setListing]   = useState(null);
-  const [vaultOpen, setVaultOpen] = useState(false);
-
-  // Per-action loading flags
-  const [loading, setLoading] = useState({
-    buy: false, approve: false, list: false,
-    cancel: false, offerTrade: false, acceptTrade: false,
-  });
-  const setL = useCallback((key, val) => setLoading(prev => ({ ...prev, [key]: val })), []);
-
-  // Field state
+/* ══ Buy Panel ═══════════════════════════════════════════════════ */
+function BuyPanel({ nft, mkt, toast }) {
   const [buyId,     setBuyId]     = useState("");
-  const [listId,    setListId]    = useState("");
-  const [listPrice, setListPrice] = useState("");
-  const [cancelId,  setCancelId]  = useState("");
-  const [myToken,   setMyToken]   = useState("");
-  const [wantToken, setWantToken] = useState("");
-  const [acceptId,  setAcceptId]  = useState("");
-
-  // Buy panel extras
-  const [buyMeta,        setBuyMeta]        = useState(null);
-  const [buyMetaLoading, setBuyMetaLoading] = useState(false);
-  const [copied,         setCopied]         = useState(false);
-
+  const [listing,   setListing]   = useState(null);
+  const [meta,      setMeta]      = useState(null);
+  const [metaLoad,  setMetaLoad]  = useState(false);
+  const [loading,   setLoading]   = useState(false);
+  const [copied,    setCopied]    = useState(false);
+  const timer = useRef(null);
   const { mutate: sendTx } = useSendTransaction();
 
-  // Memoised contracts
-  const nft = useMemo(() => getContract({ client, chain: MONAD, address: "0x45336C2E15F2fe58c67Ee4035a520231b2751669", abi: NFT_ABI_FULL }), []);
-  const mkt = useMemo(() => getContract({ client, chain: MONAD, address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI }), []);
-
-  const msg = useCallback((m, type = "success") => setStatus({ m, type }), []);
-
-  // Auto-fetch NFT metadata whenever buyId changes
-  // Uses multiple IPFS gateways with AbortController timeout fallback
+  /* Auto-fetch listing + metadata when ID changes */
   useEffect(() => {
-    if (!buyId) { setBuyMeta(null); return; }
-    let cancelled = false;
-    setBuyMetaLoading(true);
-    setBuyMeta(null);
-
-    const IPFS_GATEWAYS = [
-      "https://gateway.pinata.cloud/ipfs/",
-      "https://cloudflare-ipfs.com/ipfs/",
-      "https://ipfs.io/ipfs/",
-      "https://dweb.link/ipfs/",
-    ];
-
-    // Resolve any URI → HTTPS, trying gateways in order for ipfs://
-    async function resolveUri(uri) {
-      if (!uri) throw new Error("empty URI");
-
-      // data URI — decode inline
-      if (uri.startsWith("data:application/json")) {
-        const b64 = uri.split(",")[1];
-        return JSON.parse(atob(b64));
-      }
-
-      // plain HTTPS
-      if (uri.startsWith("http")) {
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 8000);
-        try {
-          const res = await fetch(uri, { signal: ctrl.signal });
-          clearTimeout(timer);
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          return await res.json();
-        } catch (e) { clearTimeout(timer); throw e; }
-      }
-
-      // ipfs:// — try gateways in order
-      if (uri.startsWith("ipfs://")) {
-        const cid = uri.slice(7); // everything after ipfs://
-        for (const gw of IPFS_GATEWAYS) {
-          const ctrl = new AbortController();
-          const timer = setTimeout(() => ctrl.abort(), 6000);
-          try {
-            const res = await fetch(gw + cid, { signal: ctrl.signal });
-            clearTimeout(timer);
-            if (!res.ok) continue;
-            return await res.json();
-          } catch (_) { clearTimeout(timer); }
-        }
-        throw new Error("All IPFS gateways failed for: " + uri);
-      }
-
-      throw new Error("Unknown URI scheme: " + uri);
-    }
-
-    // Resolve image field — also handles ipfs:// images
-    function resolveImage(raw) {
-      if (!raw) return null;
-      if (raw.startsWith("ipfs://")) return IPFS_GATEWAYS[0] + raw.slice(7);
-      return raw;
-    }
-
-    (async () => {
+    if (!buyId) { setListing(null); setMeta(null); return; }
+    clearTimeout(timer.current);
+    timer.current = setTimeout(async () => {
+      setMetaLoad(true);
       try {
-        // 0. Guard: check token exists (nextId is the next unminted ID)
-        const nextId = await readContract({ contract: nft, method: "nextId", params: [] }).catch(() => null);
-        console.log("[NFT] nextId:", nextId ? nextId.toString() : "unknown");
-        if (nextId !== null && BigInt(buyId) >= nextId) {
-          throw new Error(`Token #${buyId} does not exist yet (nextId=${nextId}). Valid IDs: 0 – ${nextId - 1n}`);
-        }
-
-        // 1. Read tokenURI from chain
-        const uri = await readContract({
-          contract: nft,
-          method: "tokenURI",
-          params: [BigInt(buyId)],
-        });
-        console.log("[NFT] tokenURI for #" + buyId + ":", uri);
-        if (!uri || uri.trim() === "") throw new Error("tokenURI returned empty string for #" + buyId);
-
-        // 2. Fetch metadata
-        const data = await resolveUri(uri);
-        console.log("[NFT] metadata:", data);
-
-        const img = resolveImage(data?.image ?? null);
-
-        if (!cancelled) {
-          setBuyMeta({
-            name:        data?.name        ?? `Token #${buyId}`,
-            description: data?.description ?? null,
-            image:       img,
-          });
-        }
-      } catch (e) {
-        console.error("[NFT] metadata fetch failed for #" + buyId + ":", e.message);
-        if (!cancelled) setBuyMeta({ name: `Token #${buyId}`, description: null, image: null });
-      }
-      if (!cancelled) setBuyMetaLoading(false);
-    })();
-
-    return () => { cancelled = true; };
-  }, [buyId, nft]);
-
-  /* ── Handlers ── */
-
-  const checkListing = useCallback(async id => {
-    try {
-      msg("Fetching listing...", "info");
-      const d = await readContract({ contract: mkt, method: "listings", params: [BigInt(id)] });
-      console.log("[Market] listing for #" + id + ":", d);
-      setListing({ seller: d[0], price: formatEther(d[1]), active: d[2] });
-      d[2]
-        ? msg(`Token #${id} listed for ${formatEther(d[1])} MON`, "success")
-        : msg(`Token #${id} is not listed for sale.`, "error");
-    } catch (e) {
-      console.error("[Market] checkListing error:", e);
-      msg(friendlyError(e), "error");
-    }
-  }, [mkt, msg]);
-
-  const handleApprove = useCallback(async id => {
-    msg("Approving marketplace…", "info"); setL("approve", true);
-    sendTx(
-      prepareContractCall({ contract: nft, method: "approve", params: [MARKETPLACE_ADDRESS, BigInt(id)] }),
-      {
-        onSuccess: () => { msg("Approved! Now click Step 2.", "success"); setL("approve", false); },
-        onError:   e  => { msg(friendlyError(e), "error");                setL("approve", false); },
-      }
-    );
-  }, [nft, msg, sendTx, setL]);
-
-  const handleList = useCallback(async () => {
-    if (!listId || !listPrice) return msg("Enter token ID and price.", "error");
-    msg("Publishing listing…", "info"); setL("list", true);
-    sendTx(
-      prepareContractCall({ contract: mkt, method: "listForSale", params: [BigInt(listId), parseEther(listPrice)] }),
-      {
-        onSuccess: () => { msg(`Token #${listId} listed for ${listPrice} MON ✓`); setL("list", false); },
-        onError:   e  => { msg(friendlyError(e), "error");                         setL("list", false); },
-      }
-    );
-  }, [mkt, listId, listPrice, msg, sendTx, setL]);
+        const [d, m] = await Promise.all([
+          readContract({ contract: mkt, method: "listings", params: [BigInt(buyId)] }),
+          fetchMetadata(buyId, nft),
+        ]);
+        setListing({ seller: d[0], price: formatEther(d[1]), active: d[2] });
+        setMeta(m);
+      } catch { setListing(null); setMeta(null); }
+      setMetaLoad(false);
+    }, 600);
+  }, [buyId, nft, mkt]);
 
   const handleBuy = useCallback(async () => {
-    if (!buyId) return msg("Enter a token ID.", "error");
+    if (!buyId || !listing?.active) return;
+    setLoading(true);
+    toast("Sending transaction…", "info");
     try {
-      msg("Fetching price…", "info");
       const d = await readContract({ contract: mkt, method: "listings", params: [BigInt(buyId)] });
-      if (!d[2]) return msg("Token is not listed for sale.", "error");
-      msg("Sending transaction…", "info"); setL("buy", true);
       sendTx(
         prepareContractCall({ contract: mkt, method: "buy", params: [BigInt(buyId)], value: d[1] }),
         {
-          onSuccess: () => { msg(`Token #${buyId} purchased! 🎉`); setL("buy", false); },
-          onError:   e  => { msg(friendlyError(e), "error");        setL("buy", false); },
+          onSuccess: () => { toast(`Token #${buyId} purchased! 🎉`); setLoading(false); },
+          onError:   e  => { toast(friendlyError(e), "error");         setLoading(false); },
         }
       );
-    } catch (e) { msg(friendlyError(e), "error"); }
-  }, [mkt, buyId, msg, sendTx, setL]);
+    } catch (e) { toast(friendlyError(e), "error"); setLoading(false); }
+  }, [buyId, listing, mkt, sendTx, toast]);
 
-  const handleCancel = useCallback(async () => {
-    if (!cancelId) return msg("Enter a token ID.", "error");
-    msg("Cancelling listing…", "info"); setL("cancel", true);
+  function handleCopy() {
+    const url = `${window.location.origin}${window.location.pathname}?token=${buyId}`;
+    navigator.clipboard.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+  }
+
+  return (
+    <div className="panel fade-in" style={{ display: "grid", gridTemplateColumns: "minmax(180px, 240px) 1fr", gap: "24px", padding: "0", overflow: "hidden", borderRadius: "18px" }}>
+      {/* Left — artwork */}
+      <div style={{ padding: "20px" }}>
+        <NftPreviewCard tokenId={buyId} meta={meta} metaLoading={metaLoad} listing={listing} />
+        {meta && (
+          <div className="fade-in" style={{ marginTop: "12px" }}>
+            <div style={{ fontFamily: "Cinzel, serif", fontSize: "14px", fontWeight: 700, color: T.gold, marginBottom: "3px" }}>{meta.name}</div>
+            {meta.description && <p style={{ fontSize: "10px", color: T.dim, lineHeight: 1.6, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{meta.description}</p>}
+          </div>
+        )}
+      </div>
+
+      {/* Right — form */}
+      <div style={{ padding: "24px 24px 24px 4px", display: "flex", flexDirection: "column", gap: "16px" }}>
+        <div>
+          <h3 style={{ fontFamily: "Cinzel, serif", fontSize: "16px", color: T.gold, letterSpacing: "2px", marginBottom: "4px" }}>Buy an NFT</h3>
+          <p style={{ fontSize: "10px", color: T.dim }}>Enter a token ID — price loads automatically</p>
+        </div>
+
+        <ValidInput
+          id="buy-id" label="TOKEN ID" placeholder="e.g. 42" value={buyId}
+          onChange={e => setBuyId(e.target.value.replace(/[^0-9]/g, ""))}
+          inputMode="numeric"
+          validate={v => (!v ? "Required" : null)}
+        />
+
+        <ListingInfo listing={listing} tokenId={buyId} />
+
+        <div style={{ flex: 1 }} />
+
+        {/* Buy button */}
+        <button
+          onClick={handleBuy}
+          disabled={!listing?.active || loading}
+          className="btn btn-green"
+          style={{ padding: "14px", fontSize: "13px", borderRadius: "10px", letterSpacing: "2px" }}
+        >
+          {loading ? "Processing…" : listing?.active ? `Buy for ${listing.price} MON` : "Buy Now"}
+        </button>
+
+        {/* Actions row */}
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button onClick={handleCopy} disabled={!buyId} className="btn btn-ghost"
+            style={{ flex: 1, color: copied ? T.green : undefined }}>
+            {copied ? "✓ Copied!" : "⤴ Share"}
+          </button>
+          <a href={buyId ? `https://monadscan.com/token/${NFT_ADDRESS}?a=${buyId}` : "#"}
+            target="_blank" rel="noreferrer" className="btn btn-ghost" style={{ flex: 1, textDecoration: "none", textAlign: "center" }}>
+            ↗ Explorer
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══ Sell Panel ══════════════════════════════════════════════════ */
+function SellPanel({ nft, mkt, account, toast }) {
+  const [listId,    setListId]    = useState("");
+  const [listPrice, setListPrice] = useState("");
+  const [step,      setStep]      = useState(0); // 0 = idle, 1 = approved, 2 = done
+  const [loading,   setLoading]   = useState(false);
+  const { mutate: sendTx } = useSendTransaction();
+
+  const handleApprove = useCallback(() => {
+    if (!listId) return toast("Enter a token ID first.", "error");
+    setLoading(true);
+    toast("Step 1 — Approving marketplace…", "info");
+    sendTx(
+      prepareContractCall({ contract: nft, method: "approve", params: [MARKETPLACE_ADDRESS, BigInt(listId)] }),
+      {
+        onSuccess: () => { toast("Approved! Now set your price and list.", "success"); setStep(1); setLoading(false); },
+        onError:   e  => { toast(friendlyError(e), "error"); setLoading(false); },
+      }
+    );
+  }, [nft, listId, sendTx, toast]);
+
+  const handleList = useCallback(() => {
+    if (!listId || !listPrice) return toast("Enter token ID and price.", "error");
+    setLoading(true);
+    toast("Step 2 — Publishing listing…", "info");
+    sendTx(
+      prepareContractCall({ contract: mkt, method: "listForSale", params: [BigInt(listId), parseEther(listPrice)] }),
+      {
+        onSuccess: () => { toast(`Token #${listId} listed for ${listPrice} MON ✓`); setStep(2); setLoading(false); },
+        onError:   e  => { toast(friendlyError(e), "error"); setLoading(false); },
+      }
+    );
+  }, [mkt, listId, listPrice, sendTx, toast]);
+
+  return (
+    <div className="panel fade-in" style={{ maxWidth: "560px" }}>
+      <h3 style={{ fontFamily: "Cinzel, serif", fontSize: "16px", color: T.gold, letterSpacing: "2px", marginBottom: "4px" }}>List for Sale</h3>
+      <p style={{ fontSize: "10px", color: T.dim, marginBottom: "22px" }}>Approve the marketplace, then set your price</p>
+
+      <StepIndicator steps={["Approve", "Set price", "Listed!"]} current={step} />
+
+      <ValidInput
+        id="sell-id" label="YOUR TOKEN ID" placeholder="e.g. 42" value={listId}
+        onChange={e => setListId(e.target.value.replace(/[^0-9]/g, ""))}
+        inputMode="numeric"
+        validate={v => !v ? "Required" : null}
+        hint="You must own this token to list it."
+      />
+      <ValidInput
+        id="sell-price" label="PRICE (MON)" placeholder="e.g. 1.5" value={listPrice}
+        onChange={e => setListPrice(e.target.value)}
+        validate={v => !v ? "Required" : isNaN(Number(v)) || Number(v) <= 0 ? "Enter a valid price" : null}
+        hint="Buyers will pay this amount in MON."
+      />
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "8px" }}>
+        <button onClick={handleApprove} disabled={loading || step >= 1} className="btn btn-cyan"
+          style={{ opacity: step >= 1 ? 0.5 : 1 }}>
+          {step >= 1 ? "✓ Approved" : loading ? "Approving…" : "Step 1 — Approve"}
+        </button>
+        <button onClick={handleList} disabled={loading || step < 1} className="btn btn-primary">
+          {loading && step >= 1 ? "Listing…" : "Step 2 — List"}
+        </button>
+      </div>
+
+      <div style={{ marginTop: "14px", padding: "10px 14px", background: "rgba(0,200,255,0.05)", border: "1px solid rgba(0,200,255,0.12)", borderRadius: "8px", fontSize: "10px", color: T.dim, lineHeight: 1.7 }}>
+        Step 1 authorises the marketplace contract to transfer your NFT. Step 2 creates the on-chain listing.
+      </div>
+    </div>
+  );
+}
+
+/* ══ Cancel Panel ════════════════════════════════════════════════ */
+function CancelPanel({ mkt, toast }) {
+  const [cancelId, setCancelId] = useState("");
+  const [loading,  setLoading]  = useState(false);
+  const { mutate: sendTx } = useSendTransaction();
+
+  const handle = useCallback(() => {
+    if (!cancelId) return toast("Enter a token ID.", "error");
+    setLoading(true);
+    toast("Cancelling listing…", "info");
     sendTx(
       prepareContractCall({ contract: mkt, method: "cancelListing", params: [BigInt(cancelId)] }),
       {
-        onSuccess: () => { msg(`Listing #${cancelId} cancelled.`); setL("cancel", false); },
-        onError:   e  => { msg(friendlyError(e), "error");          setL("cancel", false); },
+        onSuccess: () => { toast(`Listing #${cancelId} cancelled.`); setLoading(false); },
+        onError:   e  => { toast(friendlyError(e), "error"); setLoading(false); },
       }
     );
-  }, [mkt, cancelId, msg, sendTx, setL]);
+  }, [mkt, cancelId, sendTx, toast]);
 
-  const handleOfferTrade = useCallback(async () => {
-    if (!myToken || !wantToken) return msg("Enter both token IDs.", "error");
-    msg("Step 1/2 — Approving…", "info"); setL("offerTrade", true);
+  return (
+    <div className="panel fade-in" style={{ maxWidth: "480px" }}>
+      <h3 style={{ fontFamily: "Cinzel, serif", fontSize: "16px", color: T.gold, letterSpacing: "2px", marginBottom: "4px" }}>Cancel Listing</h3>
+      <p style={{ fontSize: "10px", color: T.dim, marginBottom: "22px" }}>Remove your NFT from sale — it stays in your wallet</p>
+
+      <ValidInput
+        id="cancel-id" label="TOKEN ID" placeholder="e.g. 42" value={cancelId}
+        onChange={e => setCancelId(e.target.value.replace(/[^0-9]/g, ""))}
+        inputMode="numeric"
+        validate={v => !v ? "Required" : null}
+      />
+
+      <button onClick={handle} disabled={loading || !cancelId} className="btn btn-danger" style={{ width: "100%", padding: "13px" }}>
+        {loading ? "Processing…" : "Cancel Listing"}
+      </button>
+    </div>
+  );
+}
+
+/* ══ Trade Panel ═════════════════════════════════════════════════ */
+function TradePanel({ nft, mkt, toast }) {
+  const [myToken,   setMyToken]   = useState("");
+  const [wantToken, setWantToken] = useState("");
+  const [acceptId,  setAcceptId]  = useState("");
+  const [loadOff,   setLoadOff]   = useState(false);
+  const [loadAcc,   setLoadAcc]   = useState(false);
+  const { mutate: sendTx } = useSendTransaction();
+
+  const handleOffer = useCallback(() => {
+    if (!myToken || !wantToken) return toast("Enter both token IDs.", "error");
+    setLoadOff(true);
+    toast("Step 1/2 — Approving…", "info");
     sendTx(
       prepareContractCall({ contract: nft, method: "approve", params: [MARKETPLACE_ADDRESS, BigInt(myToken)] }),
       {
         onSuccess: () => {
-          msg("Step 2/2 — Sending offer…", "info");
+          toast("Step 2/2 — Sending offer…", "info");
           sendTx(
             prepareContractCall({ contract: mkt, method: "offerTrade", params: [BigInt(myToken), BigInt(wantToken)] }),
             {
-              onSuccess: () => { msg(`Trade offered: #${myToken} ⇄ #${wantToken} ✓`); setL("offerTrade", false); },
-              onError:   e  => { msg(friendlyError(e), "error");                        setL("offerTrade", false); },
+              onSuccess: () => { toast(`Trade offered: #${myToken} ⇄ #${wantToken} ✓`); setLoadOff(false); },
+              onError:   e  => { toast(friendlyError(e), "error");                        setLoadOff(false); },
             }
           );
         },
-        onError: e => { msg(friendlyError(e), "error"); setL("offerTrade", false); },
+        onError: e => { toast(friendlyError(e), "error"); setLoadOff(false); },
       }
     );
-  }, [nft, mkt, myToken, wantToken, msg, sendTx, setL]);
+  }, [nft, mkt, myToken, wantToken, sendTx, toast]);
 
-  const handleAcceptTrade = useCallback(async () => {
-    if (!acceptId) return msg("Enter the offered token ID.", "error");
+  const handleAccept = useCallback(async () => {
+    if (!acceptId) return toast("Enter the offered token ID.", "error");
+    setLoadAcc(true);
     try {
-      msg("Looking up offer…", "info");
       const o = await readContract({ contract: mkt, method: "tradeOffers", params: [BigInt(acceptId)] });
-      if (!o[3]) return msg(`No active offer for token #${acceptId}.`, "error");
-      msg("Step 1/2 — Approving…", "info"); setL("acceptTrade", true);
+      if (!o[3]) { toast(`No active offer for #${acceptId}.`, "error"); setLoadAcc(false); return; }
+      toast("Step 1/2 — Approving…", "info");
       sendTx(
         prepareContractCall({ contract: nft, method: "approve", params: [MARKETPLACE_ADDRESS, o[2]] }),
         {
           onSuccess: () => {
-            msg("Step 2/2 — Accepting trade…", "info");
+            toast("Step 2/2 — Accepting…", "info");
             sendTx(
               prepareContractCall({ contract: mkt, method: "acceptTrade", params: [BigInt(acceptId)] }),
               {
-                onSuccess: () => { msg("Trade completed! ✓");      setL("acceptTrade", false); },
-                onError:   e  => { msg(friendlyError(e), "error"); setL("acceptTrade", false); },
+                onSuccess: () => { toast("Trade completed ✓"); setLoadAcc(false); },
+                onError:   e  => { toast(friendlyError(e), "error"); setLoadAcc(false); },
               }
             );
           },
-          onError: e => { msg(friendlyError(e), "error"); setL("acceptTrade", false); },
+          onError: e => { toast(friendlyError(e), "error"); setLoadAcc(false); },
         }
       );
-    } catch (e) { msg(friendlyError(e), "error"); }
-  }, [nft, mkt, acceptId, msg, sendTx, setL]);
+    } catch (e) { toast(friendlyError(e), "error"); setLoadAcc(false); }
+  }, [nft, mkt, acceptId, sendTx, toast]);
 
-  /* ── Render ── */
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "16px" }}>
+      {/* Offer trade */}
+      <div className="panel fade-in">
+        <h3 style={{ fontFamily: "Cinzel, serif", fontSize: "15px", color: T.gold, letterSpacing: "2px", marginBottom: "4px" }}>Offer a Trade</h3>
+        <p style={{ fontSize: "10px", color: T.dim, marginBottom: "20px" }}>Swap NFTs peer-to-peer — no MON needed</p>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: "10px", alignItems: "end", marginBottom: "8px" }}>
+          <ValidInput id="my-token"   label="YOUR TOKEN"  placeholder="ID you give"    value={myToken}   onChange={e => setMyToken(e.target.value.replace(/[^0-9]/g, ""))} validate={v => !v ? "Required" : null} />
+          <div style={{ paddingBottom: "14px", color: T.dim, fontSize: "20px", lineHeight: 1 }}>⇄</div>
+          <ValidInput id="want-token" label="WANT TOKEN"  placeholder="ID you want"    value={wantToken} onChange={e => setWantToken(e.target.value.replace(/[^0-9]/g, ""))} validate={v => !v ? "Required" : null} />
+        </div>
+
+        <button onClick={handleOffer} disabled={loadOff} className="btn btn-primary" style={{ width: "100%", padding: "13px" }}>
+          {loadOff ? "Processing…" : "Approve + Offer Trade"}
+        </button>
+      </div>
+
+      {/* Accept trade */}
+      <div className="panel fade-in" style={{ animationDelay: "60ms" }}>
+        <h3 style={{ fontFamily: "Cinzel, serif", fontSize: "15px", color: T.gold, letterSpacing: "2px", marginBottom: "4px" }}>Accept a Trade</h3>
+        <p style={{ fontSize: "10px", color: T.dim, marginBottom: "20px" }}>Accept an incoming swap offer</p>
+
+        <ValidInput id="accept-id" label="OFFERED TOKEN ID" placeholder="Token offered to you" value={acceptId}
+          onChange={e => setAcceptId(e.target.value.replace(/[^0-9]/g, ""))}
+          validate={v => !v ? "Required" : null}
+          hint="This is the ID of the token the other person offered."
+        />
+
+        <button onClick={handleAccept} disabled={loadAcc} className="btn btn-green" style={{ width: "100%", padding: "13px" }}>
+          {loadAcc ? "Processing…" : "Approve + Accept Trade"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ══ Market Stats bar ════════════════════════════════════════════ */
+const MarketStats = memo(function MarketStats({ mkt }) {
+  const [fee,     setFee]     = useState("—");
+  const [balance, setBalance] = useState("—");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [feeBps, res] = await Promise.all([
+          readContract({ contract: mkt, method: "FEE_BPS", params: [] }).catch(() => null),
+          fetch("https://rpc.ankr.com/monad_mainnet", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getBalance", params: [MARKETPLACE_ADDRESS, "latest"] }),
+          }).then(r => r.json()).catch(() => null),
+        ]);
+        if (feeBps != null) setFee(`${feeBps.toString()} bps`);
+        if (res?.result) setBalance((Number(BigInt(res.result)) / 1e18).toFixed(4) + " MON");
+      } catch {}
+      setLoading(false);
+    })();
+  }, [mkt]);
+
+  const stats = [
+    { label: "FEE RATE",    value: loading ? "…" : fee,     color: T.gold  },
+    { label: "VAULT POOL",  value: loading ? "…" : balance,  color: T.green },
+    { label: "NETWORK",     value: "Monad",                  color: T.cyan  },
+    { label: "CHAIN ID",    value: "143",                    color: T.mid   },
+  ];
+
+  return (
+    <div style={{
+      display: "flex", flexWrap: "wrap", gap: "1px",
+      background: T.border, border: `1px solid ${T.border}`,
+      borderRadius: "12px", overflow: "hidden", marginBottom: "20px",
+    }}>
+      {stats.map((s, i) => (
+        <div key={s.label} style={{
+          flex: "1 1 120px", padding: "14px 20px",
+          background: T.bg, textAlign: "center",
+        }}>
+          <div style={{ fontSize: "9px", color: T.dim, letterSpacing: "2px", marginBottom: "5px" }}>{s.label}</div>
+          <div style={{ fontFamily: "Cinzel, serif", fontWeight: 700, fontSize: "16px", color: s.color, lineHeight: 1 }}>{s.value}</div>
+        </div>
+      ))}
+    </div>
+  );
+});
+
+/* ══ TAB definitions ═════════════════════════════════════════════ */
+const TABS = [
+  { id: "buy",    icon: "⬇", label: "Buy",    desc: "Purchase a listed NFT"         },
+  { id: "sell",   icon: "⬆", label: "Sell",   desc: "List your NFT for sale"        },
+  { id: "cancel", icon: "✕", label: "Cancel", desc: "Remove your listing"           },
+  { id: "trade",  icon: "⇄", label: "Trade",  desc: "Swap NFTs peer-to-peer"        },
+];
+
+/* ══ MAIN MARKETPLACE ════════════════════════════════════════════ */
+export default function Marketplace({ account, initialBuyId = "" }) {
+  const [tab, setTab] = useState("buy");
+  const { toasts, add: toast, remove } = useToasts();
+
+  const nft = useMemo(() => getContract({ client, chain: MONAD, address: NFT_ADDRESS,         abi: NFT_ABI }),         []);
+  const mkt = useMemo(() => getContract({ client, chain: MONAD, address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI }), []);
+
   return (
     <>
-      <style>{`
-        @keyframes spin   { to { transform: rotate(360deg); } }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; } }
-        .fade-in          { animation: fadeIn 0.25s ease; }
-      `}</style>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      <Toast toasts={toasts} remove={remove} />
 
-      {vaultOpen && <VaultPoolModal onClose={() => setVaultOpen(false)} />}
+      <main style={{ maxWidth: "1100px", margin: "0 auto", padding: "28px 20px 80px", position: "relative", zIndex: 1 }}>
 
-      <main style={{ maxWidth: "1100px", margin: "0 auto", padding: isMobile ? "20px 12px 48px" : "32px 24px 64px", position: "relative", zIndex: 1 }}>
-
-        {/* Header */}
-        <header style={{ marginBottom: "18px", display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: "12px" }}>
+        {/* ── Header ── */}
+        <header style={{ marginBottom: "20px", display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: "12px" }}>
           <div>
-            <h1 style={{ fontFamily: "Cinzel, serif", fontWeight: 700, fontSize: isMobile ? "20px" : "26px", color: T.gold, letterSpacing: "2px", margin: "0 0 4px" }}>NFT MARKETPLACE</h1>
-            <p style={{ color: T.dim, fontSize: "11px", letterSpacing: "0.5px", margin: 0 }}>
-              Connected: <span style={{ color: T.gold }}>{account.address.slice(0, 6)}…{account.address.slice(-4)}</span>
+            <h1 style={{ fontFamily: "Cinzel, serif", fontWeight: 900, fontSize: "clamp(18px, 4vw, 28px)", color: T.gold, letterSpacing: "3px", margin: "0 0 3px" }}>
+              NFT MARKETPLACE
+            </h1>
+            <p style={{ color: T.dim, fontSize: "11px", margin: 0 }}>
+              <span style={{ color: T.gold }}>{account.address.slice(0, 6)}…{account.address.slice(-4)}</span>
               <span style={{ margin: "0 8px", color: T.border }}>·</span>
+              <span className="status-dot" style={{ marginRight: "5px" }} />
               <span style={{ color: T.green }}>Monad Mainnet</span>
             </p>
           </div>
-          <a href={TG_BOT_URL} target="_blank" rel="noreferrer" aria-label="Open @BuyTradeNFT_Bot on Telegram"
-            style={{ display: "flex", alignItems: "center", gap: "8px", background: "rgba(41,182,246,0.08)", border: "1px solid rgba(41,182,246,0.2)", borderRadius: "10px", padding: "10px 14px", textDecoration: "none", color: T.blue, transition: "background 0.15s" }}
-            onMouseEnter={e => { e.currentTarget.style.background = "rgba(41,182,246,0.16)"; }}
-            onMouseLeave={e => { e.currentTarget.style.background = "rgba(41,182,246,0.08)"; }}
-          >
-            <TgIcon size={15} />
-            <div>
-              <div style={{ fontSize: "11px" }}>@BuyTradeNFT_Bot</div>
-              <div style={{ fontSize: "9px", color: T.mid }}>Trade via Telegram</div>
-            </div>
-          </a>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <a href={`https://monadscan.com/address/${account.address}`} target="_blank" rel="noreferrer"
+              className="btn btn-ghost" style={{ fontSize: "10px" }}>↗ My Activity</a>
+            <a href={TG_BOT_URL} target="_blank" rel="noreferrer" className="btn btn-ghost" style={{ fontSize: "10px", color: T.blue }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-2.04 9.607c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.903.614z"/></svg>
+              Telegram Bot
+            </a>
+          </div>
         </header>
 
-        <MarketStats mkt={mkt} onVaultPool={() => setVaultOpen(true)} isMobile={isMobile} />
+        <MarketStats mkt={mkt} />
 
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "230px 1fr", gap: "18px" }}>
-          <Sidebar tab={tab} setTab={setTab} setStatus={setStatus} setListing={setListing} isMobile={isMobile} />
+        {/* ── Tab bar ── */}
+        <div className="tab-bar" style={{ marginBottom: "20px" }}>
+          {TABS.map(t => (
+            <button key={t.id} className={`tab-item ${tab === t.id ? "active" : ""}`} onClick={() => setTab(t.id)}
+              data-tip={t.desc} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <span style={{ opacity: 0.7 }}>{t.icon}</span>
+              {t.label}
+            </button>
+          ))}
+        </div>
 
-          <div>
-            <StatusBanner status={status} onDismiss={() => setStatus(null)} />
+        {/* ── Panels ── */}
+        {tab === "buy"    && <BuyPanel    nft={nft} mkt={mkt} toast={toast} />}
+        {tab === "sell"   && <SellPanel   nft={nft} mkt={mkt} account={account} toast={toast} />}
+        {tab === "cancel" && <CancelPanel mkt={mkt} toast={toast} />}
+        {tab === "trade"  && <TradePanel  nft={nft} mkt={mkt} toast={toast} />}
 
-            {/* ── BUY ── */}
-            {tab === "buy" && (
-              <BuyPanel
-                buyId={buyId}
-                setBuyId={setBuyId}
-                listing={listing}
-                setListing={setListing}
-                meta={buyMeta}
-                metaLoading={buyMetaLoading}
-                onBuy={handleBuy}
-                onCheck={checkListing}
-                loading={loading.buy}
-                copied={copied}
-                setCopied={setCopied}
-              />
-            )}
-
-            {/* ── SELL ── */}
-            {tab === "list" && (
-              <Panel title="List for Sale" desc="Approve the marketplace then create your listing">
-                <Field id="list-token-id" label="Token ID"    placeholder="e.g. 42"  value={listId}    onChange={e => setListId(e.target.value)} />
-                <Field id="list-price"    label="Price (MON)" placeholder="e.g. 0.5" value={listPrice} onChange={e => setListPrice(e.target.value)} />
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "4px" }}>
-                  <StepBtn step={1} label="Approve"       color={T.cyan} loading={loading.approve} onClick={() => listId && handleApprove(listId)} ariaLabel="Step 1: Approve marketplace to transfer your NFT" />
-                  <StepBtn step={2} label="List for Sale" color={T.gold} loading={loading.list}    onClick={handleList}                             ariaLabel="Step 2: Publish listing on marketplace" />
-                </div>
-                <div style={{ marginTop: "12px", padding: "10px 12px", background: "rgba(0,200,255,0.04)", border: "1px solid rgba(0,200,255,0.12)", borderRadius: "8px", fontSize: "10px", color: T.dim, lineHeight: 1.7 }}>
-                  Step 1 authorises the marketplace to transfer your NFT. Step 2 publishes the listing on-chain.
-                </div>
-              </Panel>
-            )}
-
-            {/* ── CANCEL ── */}
-            {tab === "cancel" && (
-              <Panel title="Cancel Listing" desc="Remove your NFT from sale — it stays in your wallet">
-                <Field id="cancel-token-id" label="Token ID" placeholder="e.g. 42" value={cancelId} onChange={e => setCancelId(e.target.value)} />
-                <DangerBtn onClick={handleCancel} loading={loading.cancel} ariaLabel={`Cancel listing for token ${cancelId || "—"}`}>Cancel Listing</DangerBtn>
-              </Panel>
-            )}
-
-            {/* ── TRADE ── */}
-            {tab === "trade" && (
-              <div style={{ display: "grid", gap: "16px" }}>
-                <Panel title="Offer a Trade" desc="Approve your token then propose a peer-to-peer swap">
-                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 30px 1fr", gap: "10px", alignItems: "end" }}>
-                    <Field id="my-token"   label="Your Token ID" placeholder="e.g. 10" value={myToken}   onChange={e => setMyToken(e.target.value)} />
-                    {!isMobile && <div style={{ paddingBottom: "14px", textAlign: "center", color: T.dim, fontSize: "18px" }} aria-hidden="true">⇄</div>}
-                    <Field id="want-token" label="Want Token ID" placeholder="e.g. 55" value={wantToken} onChange={e => setWantToken(e.target.value)} />
-                  </div>
-                  <PrimaryBtn onClick={handleOfferTrade} loading={loading.offerTrade} ariaLabel={`Approve and offer trade of #${myToken} for #${wantToken}`}>Approve + Offer Trade</PrimaryBtn>
-                </Panel>
-                <Panel title="Accept a Trade" desc="Accept an incoming swap offer">
-                  <Field id="accept-token-id" label="Offered Token ID" placeholder="Token ID offered to you" value={acceptId} onChange={e => setAcceptId(e.target.value)} />
-                  <GreenBtn onClick={handleAcceptTrade} loading={loading.acceptTrade} ariaLabel={`Approve and accept trade offer for token ${acceptId}`}>Approve + Accept Trade</GreenBtn>
-                </Panel>
-              </div>
-            )}
-          </div>
+        {/* ── Contract links ── */}
+        <div style={{ marginTop: "32px", padding: "14px 18px", background: T.bg, border: `1px solid ${T.border}`, borderRadius: "10px", display: "flex", gap: "24px", flexWrap: "wrap" }}>
+          <div style={{ fontSize: "9px", color: T.dim, letterSpacing: "1.5px", alignSelf: "center" }}>CONTRACTS</div>
+          {[["NFT", NFT_ADDRESS], ["Marketplace", MARKETPLACE_ADDRESS]].map(([name, addr]) => (
+            <a key={name} href={`https://monadscan.com/address/${addr}`} target="_blank" rel="noreferrer"
+              style={{ fontSize: "10px", color: T.dim, fontFamily: "Share Tech Mono, monospace", textDecoration: "none" }}
+              onMouseEnter={e => e.target.style.color = T.gold}
+              onMouseLeave={e => e.target.style.color = T.dim}
+            >
+              {name}: {addr.slice(0, 8)}…{addr.slice(-6)}
+            </a>
+          ))}
         </div>
       </main>
     </>
