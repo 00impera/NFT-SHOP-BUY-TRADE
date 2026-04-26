@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getContract, readContract } from "thirdweb";
-import { formatEther } from "ethers"; // ✅ FIXED: was "ethers/utils"
+import { formatEther } from "ethers"; // ✅ ethers v6 top-level import
 import { client } from "./App.jsx";
 import {
   MONAD, NFT_ADDRESS, MARKETPLACE_ADDRESS,
@@ -18,10 +18,10 @@ const GATEWAYS = [
 function resolveIpfs(uri) {
   if (!uri) return null;
   if (uri.startsWith("ipfs://")) return GATEWAYS[0] + uri.slice(7);
-  return uri; // ✅ https:// Cloudinary URLs pass through unchanged
+  return uri; // https:// Cloudinary URLs pass through unchanged
 }
 
-/* ── Fetch metadata for one token ────────────────────────────── */
+/* ── Fetch metadata for one token ─────────────────────────────── */
 async function fetchMeta(tokenId, nftContract) {
   try {
     const uri = await readContract({
@@ -118,7 +118,7 @@ function NFTCard({ tokenId, price, seller, meta, loading, onBuy, onSelect, index
         <div className="nft-card__price">
           <span>
             <span className="nft-card__price-val">{price}</span>
-            <span className="nft-card__price-unit">MON</span>
+            <span className="nft-card__price-unit"> MON</span>
           </span>
           <a
             href={`https://monadscan.com/address/${seller}`}
@@ -238,14 +238,11 @@ export default function NFTGallery({ account, onBuyRequest }) {
   const [items,    setItems]    = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState(null);
-  const [filter,   setFilter]   = useState("all");   // all | mine
-  const [sortBy,   setSortBy]   = useState("price"); // price | id
+  const [filter,   setFilter]   = useState("all");
+  const [sortBy,   setSortBy]   = useState("price");
   const [selected, setSelected] = useState(null);
   const [search,   setSearch]   = useState("");
   const abortRef = useRef(null);
-
-  /* ── Scan all token IDs for active listings ──────────────── */
-  const SCAN_LIMIT = 100; // safety cap — nextId() is read first
 
   const loadGallery = useCallback(async () => {
     setLoading(true); setError(null);
@@ -256,18 +253,28 @@ export default function NFTGallery({ account, onBuyRequest }) {
       const nft = getContract({ client, chain: MONAD, address: NFT_ADDRESS,         abi: NFT_ABI });
       const mkt = getContract({ client, chain: MONAD, address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI });
 
-      // 1. Get total supply via nextId()
-      let nextId = BigInt(SCAN_LIMIT);
+      // ── 1. Read nextId() ──────────────────────────────────────
+      // Tokens are minted as IDs 1, 2, 3 … nextId-1
+      // Token #0 does NOT exist — tokenURI(0) reverts
+      let nextId = 1n;
       try {
         nextId = await readContract({ contract: nft, method: "nextId", params: [] });
       } catch {}
-      const total = Number(nextId); // e.g. 31 → tokens 0–30
 
-      // 2. Check all listings in parallel batches of 20
+      const total = Number(nextId); // e.g. 31 → valid tokens are 1..30
+
+      if (total <= 1) {
+        setItems([]);
+        setLoading(false);
+        return;
+      }
+
+      // ── 2. Scan IDs 1 … nextId-1 in batches of 20 ────────────
+      // ✅ START AT 1, NOT 0
       const BATCH = 20;
       const listed = [];
 
-      for (let start = 0; start < total; start += BATCH) {
+      for (let start = 1; start < total; start += BATCH) {
         if (abortRef.current.signal.aborted) break;
         const end = Math.min(start + BATCH, total);
         const ids = Array.from({ length: end - start }, (_, i) => start + i);
@@ -275,7 +282,7 @@ export default function NFTGallery({ account, onBuyRequest }) {
         const results = await Promise.allSettled(
           ids.map(id =>
             readContract({ contract: mkt, method: "listings", params: [BigInt(id)] })
-              // listings returns [seller, price, active] — matches MARKETPLACE_ABI
+              // struct: (address seller, uint256 price, bool active)
               .then(d => ({ id, seller: d[0], price: formatEther(d[1]), active: d[2] }))
           )
         );
@@ -289,11 +296,11 @@ export default function NFTGallery({ account, onBuyRequest }) {
 
       if (abortRef.current.signal.aborted) return;
 
-      // 3. Show placeholder cards immediately so the grid appears
+      // ── 3. Show placeholder cards immediately ─────────────────
       setItems(listed.map(l => ({ ...l, meta: null, metaLoading: true })));
       setLoading(false);
 
-      // 4. Fetch metadata progressively — images fill in as they load
+      // ── 4. Fetch metadata progressively ──────────────────────
       for (const l of listed) {
         if (abortRef.current.signal.aborted) break;
         const meta = await fetchMeta(l.id, nft);
@@ -318,27 +325,25 @@ export default function NFTGallery({ account, onBuyRequest }) {
   /* ── Filtering & sorting ─────────────────────────────────── */
   const visible = items
     .filter(item => {
-      if (filter === "mine" && account) {
+      if (filter === "mine" && account)
         return item.seller.toLowerCase() === account.address.toLowerCase();
-      }
       return true;
     })
     .filter(item => {
       if (!search) return true;
       const q = search.toLowerCase();
-      return (
-        String(item.id).includes(q) ||
-        item.meta?.name?.toLowerCase().includes(q)
-      );
+      return String(item.id).includes(q) || item.meta?.name?.toLowerCase().includes(q);
     })
-    .sort((a, b) => {
-      if (sortBy === "price") return parseFloat(a.price) - parseFloat(b.price);
-      return a.id - b.id;
-    });
+    .sort((a, b) =>
+      sortBy === "price"
+        ? parseFloat(a.price) - parseFloat(b.price)
+        : a.id - b.id
+    );
 
-  /* ── Render ─────────────────────────────────────────────── */
+  /* ── Render ──────────────────────────────────────────────── */
   return (
     <div className="fade-in">
+
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px", marginBottom: "20px" }}>
         <div>
@@ -349,19 +354,14 @@ export default function NFTGallery({ account, onBuyRequest }) {
             {loading ? "Scanning blockchain…" : `${items.length} NFTs listed · ${visible.length} shown`}
           </p>
         </div>
-        <button
-          className="btn btn-ghost"
-          style={{ fontSize: "10px", padding: "8px 14px" }}
-          onClick={loadGallery}
-          disabled={loading}
-        >
+        <button className="btn btn-ghost" style={{ fontSize: "10px", padding: "8px 14px" }}
+          onClick={loadGallery} disabled={loading}>
           {loading ? "⟳ Loading…" : "↻ Refresh"}
         </button>
       </div>
 
       {/* Filter bar */}
       <div className="filter-bar">
-        {/* Search */}
         <input
           className="field-input"
           placeholder="Search by name or ID…"
@@ -369,46 +369,29 @@ export default function NFTGallery({ account, onBuyRequest }) {
           onChange={e => setSearch(e.target.value)}
           style={{ flex: "1 1 180px", minWidth: "160px", padding: "7px 12px", fontSize: "11px", marginBottom: 0 }}
         />
-
-        {/* Filter chips */}
         <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
           {["all", "mine"].map(f => (
-            <button
-              key={f}
-              className={`filter-chip ${filter === f ? "active" : ""}`}
-              onClick={() => setFilter(f)}
-              disabled={f === "mine" && !account}
-            >
+            <button key={f} className={`filter-chip ${filter === f ? "active" : ""}`}
+              onClick={() => setFilter(f)} disabled={f === "mine" && !account}>
               {f === "all" ? "All Listings" : "My Listings"}
             </button>
           ))}
         </div>
-
-        {/* Sort */}
-        <select
-          value={sortBy}
-          onChange={e => setSortBy(e.target.value)}
-          style={{
-            background: "var(--dark2)", border: "1px solid var(--border)",
-            borderRadius: "6px", color: "var(--text2)", fontSize: "10px",
-            padding: "6px 10px", outline: "none", cursor: "pointer",
-          }}
-        >
+        <select value={sortBy} onChange={e => setSortBy(e.target.value)}
+          style={{ background: "var(--dark2)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--text2)", fontSize: "10px", padding: "6px 10px", outline: "none", cursor: "pointer" }}>
           <option value="price">↑ Price</option>
           <option value="id">↑ Token ID</option>
         </select>
       </div>
 
-      {/* Skeleton loading state */}
+      {/* Skeleton */}
       {loading && (
         <div className="nft-gallery-grid">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <NFTCard key={i} loading index={i} />
-          ))}
+          {Array.from({ length: 8 }).map((_, i) => <NFTCard key={i} loading index={i} />)}
         </div>
       )}
 
-      {/* Error state */}
+      {/* Error */}
       {error && !loading && (
         <div style={{ background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: "12px", padding: "20px", textAlign: "center" }}>
           <div style={{ color: "var(--red)", fontSize: "13px", marginBottom: "10px" }}>✕ {error}</div>
@@ -416,41 +399,29 @@ export default function NFTGallery({ account, onBuyRequest }) {
         </div>
       )}
 
-      {/* Empty state */}
+      {/* Empty */}
       {!loading && !error && visible.length === 0 && (
         <div className="empty-state">
           <div className="empty-state__icon">◈</div>
-          <div className="empty-state__title">
-            {items.length === 0 ? "No NFTs Listed" : "No Results"}
-          </div>
+          <div className="empty-state__title">{items.length === 0 ? "No NFTs Listed" : "No Results"}</div>
           <div className="empty-state__sub">
-            {items.length === 0
-              ? "Be the first to list an NFT on the marketplace."
-              : "Try a different search or filter."}
+            {items.length === 0 ? "Be the first to list an NFT on the marketplace." : "Try a different search or filter."}
           </div>
         </div>
       )}
 
-      {/* Gallery grid */}
+      {/* Grid */}
       {!loading && visible.length > 0 && (
         <div className="nft-gallery-grid">
           {visible.map((item, i) => (
-            <NFTCard
-              key={item.id}
-              tokenId={item.id}
-              price={item.price}
-              seller={item.seller}
-              meta={item.meta}
-              loading={item.metaLoading}
-              index={i}
-              onBuy={onBuyRequest}
-              onSelect={setSelected}
-            />
+            <NFTCard key={item.id} tokenId={item.id} price={item.price} seller={item.seller}
+              meta={item.meta} loading={item.metaLoading} index={i}
+              onBuy={onBuyRequest} onSelect={setSelected} />
           ))}
         </div>
       )}
 
-      {/* Floor price footer */}
+      {/* Stats footer */}
       {!loading && visible.length > 1 && (
         <div style={{ marginTop: "20px", padding: "12px 18px", background: "var(--card)", border: "1px solid var(--border)", borderRadius: "10px", display: "flex", gap: "24px", flexWrap: "wrap" }}>
           <div>
