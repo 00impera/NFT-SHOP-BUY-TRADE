@@ -5,7 +5,7 @@ export const CLIENT_ID = import.meta.env.VITE_THIRDWEB_CLIENT_ID || "";
 
 /* ── Monad Mainnet ─────────────────────────────────────────────── */
 export const MONAD = defineChain({
-  id: 10143,                          // ✅ FIXED: was 143
+  id: 10143,
   name: "Monad Mainnet",
   nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
   rpc: import.meta.env.VITE_MONAD_RPC || "https://rpc.monad.xyz",
