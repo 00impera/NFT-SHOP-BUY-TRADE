@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
 import { getContract, prepareContractCall, readContract } from "thirdweb";
 import { useSendTransaction } from "thirdweb/react";
-import { formatEther, parseEther } from "ethers/utils";
+import { formatEther, parseEther } from "ethers"; // ✅ FIXED: was "ethers/utils"
 import { client } from "./App.jsx";
 import {
   MONAD, NFT_ADDRESS, MARKETPLACE_ADDRESS,
@@ -41,7 +41,7 @@ function friendlyError(err) {
 function resolveIpfs(uri) {
   if (!uri) return null;
   if (uri.startsWith("ipfs://")) return IPFS_GATEWAYS[0] + uri.slice(7);
-  return uri;
+  return uri; // ✅ https:// Cloudinary URLs pass through unchanged
 }
 async function fetchMetadata(tokenId, nftContract) {
   try {
@@ -558,7 +558,7 @@ const MarketStats = memo(function MarketStats({ mkt }) {
     { label: "FEE RATE",    value: loading ? "…" : fee,     color: T.gold  },
     { label: "VAULT POOL",  value: loading ? "…" : balance,  color: T.green },
     { label: "NETWORK",     value: "Monad",                  color: T.cyan  },
-    { label: "CHAIN ID",    value: "143",                    color: T.mid   },
+    { label: "CHAIN ID",    value: "10143",                  color: T.mid   }, // ✅ FIXED: was 143
   ];
 
   return (
@@ -567,7 +567,7 @@ const MarketStats = memo(function MarketStats({ mkt }) {
       background: T.border, border: `1px solid ${T.border}`,
       borderRadius: "12px", overflow: "hidden", marginBottom: "20px",
     }}>
-      {stats.map((s, i) => (
+      {stats.map((s) => (
         <div key={s.label} style={{
           flex: "1 1 120px", padding: "14px 20px",
           background: T.bg, textAlign: "center",
