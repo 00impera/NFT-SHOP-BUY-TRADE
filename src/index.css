@@ -3,12 +3,36 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --gold: #c9a84c; --gold2: #f0d080;
-  --green: #00ff88; --blue: #00c8ff;
-  --purple: #7c3aed; --purple2: #a855f7;
-  --dark: #000408;  --card: #020c14;
-  --border: #0a2a3a; --text: #80b8d0;
-  --red: #ef4444; --tg: #29b6f6;
+  --gold:    #c9a84c;
+  --gold2:   #f0d080;
+  --gold3:   #7a4a00;
+  --green:   #00ff88;
+  --green2:  #00cc6a;
+  --blue:    #00c8ff;
+  --blue2:   #0080cc;
+  --purple:  #7c3aed;
+  --purple2: #a855f7;
+  --dark:    #000408;
+  --dark2:   #010810;
+  --card:    #020c14;
+  --card2:   #030f1a;
+  --border:  #0a2a3a;
+  --border2: #0d3347;
+  --text:    #80b8d0;
+  --text2:   #4a8aaa;
+  --red:     #ef4444;
+  --red2:    #ff6688;
+  --tg:      #29b6f6;
+
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+
+  --shadow-gold:  0 0 24px rgba(201,168,76,0.25);
+  --shadow-green: 0 0 24px rgba(0,255,136,0.2);
+  --shadow-blue:  0 0 24px rgba(0,200,255,0.2);
+  --shadow-card:  0 8px 40px rgba(0,0,0,0.6), 0 0 1px rgba(0,200,255,0.08);
 }
 
 body {
@@ -17,39 +41,416 @@ body {
   font-family: 'Share Tech Mono', monospace;
   min-height: 100vh;
   overflow-x: hidden;
+  line-height: 1.6;
 }
 
+/* ── Atmospheric grid background ─────────────────────────────── */
 body::before {
   content: '';
   position: fixed; inset: 0;
   background-image:
-    linear-gradient(rgba(0,200,255,0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,200,255,0.025) 1px, transparent 1px);
-  background-size: 40px 40px;
+    linear-gradient(rgba(0,200,255,0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,200,255,0.018) 1px, transparent 1px);
+  background-size: 48px 48px;
   pointer-events: none; z-index: 0;
 }
 
-::-webkit-scrollbar { width: 5px; }
-::-webkit-scrollbar-track { background: var(--dark); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-
-button { font-family: 'Share Tech Mono', monospace; cursor: pointer; transition: all 0.2s; }
-input, select { font-family: 'Share Tech Mono', monospace; }
-a { transition: all 0.15s; }
-
-@keyframes titleFlow { 0%{background-position:0%} 100%{background-position:300%} }
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
-@keyframes floatImg { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
-@keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
-@keyframes slideDown { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
-@keyframes vibrate {
-  0%{transform:translate(0,0) rotate(0deg)}
-  20%{transform:translate(-1px,0.5px) rotate(-0.4deg)}
-  40%{transform:translate(1px,-0.5px) rotate(0.4deg)}
-  60%{transform:translate(-0.5px,1px) rotate(-0.2deg)}
-  80%{transform:translate(0.5px,-1px) rotate(0.2deg)}
-  100%{transform:translate(0,0) rotate(0deg)}
+/* Radial vignette */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background: radial-gradient(ellipse at 50% 0%, rgba(0,200,255,0.04) 0%, transparent 60%),
+              radial-gradient(ellipse at 100% 100%, rgba(201,168,76,0.04) 0%, transparent 50%),
+              radial-gradient(ellipse at 0% 100%, rgba(0,255,136,0.03) 0%, transparent 50%);
+  pointer-events: none; z-index: 0;
 }
 
-.fade-in { animation: fadeIn 0.25s ease; }
-.slide-down { animation: slideDown 0.25s ease; }
+/* ── Scrollbar ─────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--dark); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text2); }
+
+/* ── Base elements ─────────────────────────────────────────────── */
+button { font-family: 'Share Tech Mono', monospace; cursor: pointer; transition: all 0.18s; }
+input, select { font-family: 'Share Tech Mono', monospace; }
+a { transition: all 0.15s; }
+img { display: block; }
+
+/* ── Animations ─────────────────────────────────────────────────── */
+@keyframes titleFlow {
+  0%   { background-position: 0% }
+  100% { background-position: 300% }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.85); }
+}
+@keyframes floatImg {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  33%       { transform: translateY(-5px) rotate(0.5deg); }
+  66%       { transform: translateY(-3px) rotate(-0.3deg); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(201,168,76,0.3); }
+  50%       { box-shadow: 0 0 20px rgba(201,168,76,0.6), 0 0 40px rgba(201,168,76,0.2); }
+}
+@keyframes borderGlow {
+  0%, 100% { border-color: rgba(0,200,255,0.2); }
+  50%       { border-color: rgba(0,200,255,0.5); }
+}
+@keyframes vibrate {
+  0%   { transform: translate(0,0) rotate(0deg); }
+  20%  { transform: translate(-1px, 0.5px) rotate(-0.4deg); }
+  40%  { transform: translate(1px, -0.5px) rotate(0.4deg); }
+  60%  { transform: translate(-0.5px, 1px) rotate(-0.2deg); }
+  80%  { transform: translate(0.5px, -1px) rotate(0.2deg); }
+  100% { transform: translate(0,0) rotate(0deg); }
+}
+@keyframes nftCardReveal {
+  from { opacity: 0; transform: translateY(16px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── Utility classes ─────────────────────────────────────────────── */
+.fade-in    { animation: fadeIn 0.3s ease forwards; }
+.slide-down { animation: slideDown 0.28s ease forwards; }
+.slide-up   { animation: slideUp 0.3s ease forwards; }
+.scale-in   { animation: scaleIn 0.25s ease forwards; }
+
+/* ── NFT Gallery Card ──────────────────────────────────────────── */
+.nft-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.25s ease, border-color 0.25s ease;
+  animation: nftCardReveal 0.35s ease forwards;
+  animation-fill-mode: both;
+  position: relative;
+}
+.nft-card:hover {
+  transform: translateY(-5px) scale(1.02);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.7), 0 0 20px rgba(201,168,76,0.2);
+  border-color: rgba(201,168,76,0.4);
+}
+.nft-card:hover .nft-card__overlay {
+  opacity: 1;
+}
+.nft-card__img-wrap {
+  position: relative;
+  width: 100%;
+  padding-top: 100%; /* square */
+  background: #010a12;
+  overflow: hidden;
+}
+.nft-card__img-wrap img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+}
+.nft-card:hover .nft-card__img-wrap img {
+  transform: scale(1.06);
+}
+.nft-card__overlay {
+  position: absolute; inset: 0;
+  background: linear-gradient(to top, rgba(2,12,20,0.95) 0%, rgba(2,12,20,0.4) 50%, transparent 100%);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  display: flex; align-items: flex-end;
+  padding: 14px;
+}
+.nft-card__placeholder {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 8px; color: var(--border2);
+  font-size: 32px;
+}
+.nft-card__body {
+  padding: 12px 14px 14px;
+}
+.nft-card__id {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px; letter-spacing: 2px;
+  color: var(--text2); margin-bottom: 3px;
+}
+.nft-card__name {
+  font-family: 'Cinzel', serif;
+  font-size: 13px; font-weight: 700;
+  color: var(--gold); margin-bottom: 6px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.nft-card__price {
+  display: flex; align-items: center;
+  justify-content: space-between;
+}
+.nft-card__price-val {
+  font-family: 'Cinzel', serif;
+  font-size: 15px; font-weight: 700;
+  color: var(--green);
+}
+.nft-card__price-unit {
+  font-size: 10px; color: var(--text2);
+  margin-left: 4px;
+}
+.nft-card__badge {
+  position: absolute; top: 10px; left: 10px;
+  background: rgba(0,255,136,0.15);
+  border: 1px solid rgba(0,255,136,0.35);
+  border-radius: 5px; padding: 3px 8px;
+  font-size: 9px; letter-spacing: 1.5px; color: var(--green);
+  backdrop-filter: blur(4px);
+}
+.nft-card__badge--new {
+  background: rgba(201,168,76,0.15);
+  border-color: rgba(201,168,76,0.35);
+  color: var(--gold);
+}
+
+/* ── Gallery grid ─────────────────────────────────────────────── */
+.nft-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
+}
+@media (max-width: 700px) {
+  .nft-gallery-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+}
+
+/* ── Skeleton loader ──────────────────────────────────────────── */
+.skeleton {
+  background: linear-gradient(90deg, var(--card) 25%, var(--card2) 50%, var(--card) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: var(--radius-md);
+}
+
+/* ── Improved button styles ──────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 7px; padding: 11px 20px; border-radius: var(--radius-sm);
+  font-family: 'Share Tech Mono', monospace; font-size: 11px;
+  letter-spacing: 1.5px; border: none; cursor: pointer;
+  transition: all 0.18s; position: relative; overflow: hidden;
+  white-space: nowrap;
+}
+.btn::after {
+  content: ''; position: absolute; inset: 0;
+  background: white; opacity: 0; transition: opacity 0.15s;
+}
+.btn:active::after { opacity: 0.05; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--gold3), var(--gold));
+  color: #000; font-weight: 700;
+  box-shadow: 0 4px 16px rgba(201,168,76,0.25);
+}
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--gold3), var(--gold2));
+  box-shadow: 0 6px 24px rgba(201,168,76,0.4);
+  transform: translateY(-1px);
+}
+
+.btn-green {
+  background: rgba(0,255,136,0.1);
+  border: 1px solid rgba(0,255,136,0.3);
+  color: var(--green);
+}
+.btn-green:hover:not(:disabled) {
+  background: rgba(0,255,136,0.18);
+  box-shadow: 0 4px 20px rgba(0,255,136,0.2);
+  transform: translateY(-1px);
+}
+
+.btn-danger {
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.3);
+  color: var(--red);
+}
+.btn-danger:hover:not(:disabled) {
+  background: rgba(239,68,68,0.18);
+  box-shadow: 0 4px 20px rgba(239,68,68,0.2);
+}
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text2);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--card2);
+  border-color: var(--border2);
+  color: var(--text);
+}
+
+.btn-cyan {
+  background: linear-gradient(135deg, #003a5a, #00c8ff);
+  color: #000; font-weight: 700;
+  box-shadow: 0 0 16px rgba(0,200,255,0.3);
+}
+.btn-cyan:hover:not(:disabled) {
+  box-shadow: 0 0 28px rgba(0,200,255,0.5);
+  transform: translateY(-1px);
+}
+
+/* ── Improved input ─────────────────────────────────────────────── */
+.field-wrap { margin-bottom: 14px; }
+.field-label {
+  display: block; font-size: 9px; color: var(--text2);
+  letter-spacing: 2px; margin-bottom: 7px;
+}
+.field-input {
+  width: 100%; padding: 11px 14px;
+  background: var(--dark2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text); font-size: 13px;
+  font-family: 'Share Tech Mono', monospace;
+  outline: none; transition: all 0.15s;
+}
+.field-input:focus {
+  border-color: var(--gold);
+  background: var(--card);
+  box-shadow: 0 0 0 3px rgba(201,168,76,0.1);
+}
+.field-input::placeholder { color: var(--border2); }
+
+/* ── Panel card ─────────────────────────────────────────────────── */
+.panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 24px;
+  box-shadow: var(--shadow-card);
+  transition: border-color 0.2s;
+}
+.panel:hover { border-color: var(--border2); }
+
+/* ── Status badge ───────────────────────────────────────────────── */
+.status-dot {
+  display: inline-block; width: 7px; height: 7px;
+  border-radius: 50%; background: var(--green);
+  animation: pulse 2s infinite;
+  box-shadow: 0 0 8px rgba(0,255,136,0.6);
+}
+
+/* ── Tab bar ────────────────────────────────────────────────────── */
+.tab-bar {
+  display: flex; gap: 4px;
+  background: var(--dark2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+}
+.tab-item {
+  flex: 1; padding: 8px 12px; border-radius: 6px;
+  border: none; background: transparent;
+  color: var(--text2); font-size: 11px;
+  letter-spacing: 1px; cursor: pointer;
+  transition: all 0.15s;
+}
+.tab-item.active {
+  background: rgba(201,168,76,0.12);
+  color: var(--gold);
+  box-shadow: 0 0 12px rgba(201,168,76,0.1);
+}
+.tab-item:hover:not(.active) {
+  background: rgba(255,255,255,0.03);
+  color: var(--text);
+}
+
+/* ── Price chip ─────────────────────────────────────────────────── */
+.price-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(0,255,136,0.08);
+  border: 1px solid rgba(0,255,136,0.25);
+  border-radius: 100px; padding: 4px 12px;
+  font-family: 'Cinzel', serif; font-size: 13px;
+  font-weight: 700; color: var(--green);
+}
+
+/* ── Tooltip ────────────────────────────────────────────────────── */
+[data-tip] { position: relative; }
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute; bottom: calc(100% + 8px); left: 50%;
+  transform: translateX(-50%);
+  background: var(--card2); border: 1px solid var(--border2);
+  color: var(--text); font-size: 10px; white-space: nowrap;
+  padding: 5px 10px; border-radius: 6px;
+  opacity: 0; pointer-events: none; transition: opacity 0.15s;
+}
+[data-tip]:hover::after { opacity: 1; }
+
+/* ── Filter bar ─────────────────────────────────────────────────── */
+.filter-bar {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  align-items: center;
+  padding: 14px 18px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: 18px;
+}
+.filter-chip {
+  padding: 5px 14px; border-radius: 100px;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--text2); font-size: 10px; letter-spacing: 1px;
+  cursor: pointer; transition: all 0.15s;
+}
+.filter-chip.active, .filter-chip:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(201,168,76,0.08);
+}
+
+/* ── Empty state ────────────────────────────────────────────────── */
+.empty-state {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 60px 20px; gap: 14px;
+  color: var(--border2);
+}
+.empty-state__icon { font-size: 48px; opacity: 0.5; }
+.empty-state__title {
+  font-family: 'Cinzel', serif; font-size: 15px;
+  color: var(--text2); letter-spacing: 2px;
+}
+.empty-state__sub { font-size: 11px; color: var(--border2); text-align: center; }
+
+/* ── Glow highlight line (decorative) ─────────────────────────── */
+.glow-line {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--blue), var(--green), transparent);
+  margin: 20px 0; opacity: 0.4;
+}
