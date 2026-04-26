@@ -61,7 +61,7 @@ async function fetchPools(force = false) {
     return poolCache.data;
   }
   try {
-    const result = await rpcCall("eth_call", [{ to: VAULT_ADDR, data: "0x8a4d31bd" }, "latest"]);
+    const result = await rpcCall("eth_call", [{ to: VAULT_ADDR, data: "0xd88ff1f4" }, "latest"]);
     if (!result || result === "0x") return null;
     const clean = result.slice(2).padStart(256, "0");
     const fmt   = hex => (Number(BigInt("0x" + hex)) / 1e18).toLocaleString(undefined, { maximumFractionDigits: 3 });
