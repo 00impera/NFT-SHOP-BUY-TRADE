@@ -18,7 +18,7 @@ const GATEWAYS = [
 function resolveIpfs(uri) {
   if (!uri) return null;
   if (uri.startsWith("ipfs://")) return GATEWAYS[0] + uri.slice(7);
-  return uri; // https:// Cloudinary URLs pass through unchanged
+  return uri;
 }
 
 /* ── Fetch metadata for one token ─────────────────────────────── */
@@ -81,10 +81,8 @@ function NFTCard({ tokenId, price, seller, meta, loading, onBuy, onSelect, index
       style={{ animationDelay: delay }}
       onClick={() => onSelect?.({ tokenId, price, seller, meta })}
     >
-      {/* Badge */}
       <div className="nft-card__badge">FOR SALE</div>
 
-      {/* Image */}
       <div className="nft-card__img-wrap">
         {meta?.image && !imgErr ? (
           <>
@@ -111,7 +109,6 @@ function NFTCard({ tokenId, price, seller, meta, loading, onBuy, onSelect, index
         )}
       </div>
 
-      {/* Info */}
       <div className="nft-card__body">
         <div className="nft-card__id">TOKEN #{tokenId}</div>
         <div className="nft-card__name">{meta?.name ?? `Token #${tokenId}`}</div>
@@ -161,11 +158,9 @@ function NFTDetailModal({ item, onClose, onBuy }) {
         }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Top glow bar */}
         <div style={{ height: "2px", background: "linear-gradient(90deg, transparent, var(--blue), var(--green), transparent)" }} />
 
         <div style={{ display: "flex", flexDirection: "column" }}>
-          {/* Image */}
           <div style={{ position: "relative", background: "#010a12", aspectRatio: "16/9", overflow: "hidden" }}>
             {meta?.image ? (
               <img src={meta.image} alt={meta.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -182,7 +177,6 @@ function NFTDetailModal({ item, onClose, onBuy }) {
             </div>
           </div>
 
-          {/* Details */}
           <div style={{ padding: "22px 26px 28px" }}>
             <div style={{ fontSize: "10px", color: "var(--text2)", letterSpacing: "2px", marginBottom: "4px" }}>TOKEN #{tokenId}</div>
             <div style={{ fontFamily: "Cinzel, serif", fontSize: "22px", fontWeight: 700, color: "var(--gold)", marginBottom: "8px" }}>
@@ -232,7 +226,6 @@ function NFTDetailModal({ item, onClose, onBuy }) {
 
 /* ════════════════════════════════════════════════════════════
    MAIN GALLERY COMPONENT
-   Usage: <NFTGallery account={account} onBuyRequest={fn} />
    ════════════════════════════════════════════════════════════ */
 export default function NFTGallery({ account, onBuyRequest }) {
   const [items,    setItems]    = useState([]);
@@ -253,15 +246,12 @@ export default function NFTGallery({ account, onBuyRequest }) {
       const nft = getContract({ client, chain: MONAD, address: NFT_ADDRESS,         abi: NFT_ABI });
       const mkt = getContract({ client, chain: MONAD, address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI });
 
-      // ── 1. Read nextId() ──────────────────────────────────────
-      // Tokens are minted as IDs 1, 2, 3 … nextId-1
-      // Token #0 does NOT exist — tokenURI(0) reverts
       let nextId = 1n;
       try {
         nextId = await readContract({ contract: nft, method: "nextId", params: [] });
       } catch {}
 
-      const total = Number(nextId); // e.g. 31 → valid tokens are 1..30
+      const total = Number(nextId);
 
       if (total <= 1) {
         setItems([]);
@@ -269,8 +259,7 @@ export default function NFTGallery({ account, onBuyRequest }) {
         return;
       }
 
-      // ── 2. Scan IDs 1 … nextId-1 in batches of 20 ────────────
-      // ✅ START AT 1, NOT 0
+      // ✅ FIX: Scan listings in parallel batches of 20
       const BATCH = 20;
       const listed = [];
 
@@ -282,7 +271,6 @@ export default function NFTGallery({ account, onBuyRequest }) {
         const results = await Promise.allSettled(
           ids.map(id =>
             readContract({ contract: mkt, method: "listings", params: [BigInt(id)] })
-              // struct: (address seller, uint256 price, bool active)
               .then(d => ({ id, seller: d[0], price: formatEther(d[1]), active: d[2] }))
           )
         );
@@ -296,17 +284,23 @@ export default function NFTGallery({ account, onBuyRequest }) {
 
       if (abortRef.current.signal.aborted) return;
 
-      // ── 3. Show placeholder cards immediately ─────────────────
+      // Show placeholder cards immediately
       setItems(listed.map(l => ({ ...l, meta: null, metaLoading: true })));
       setLoading(false);
 
-      // ── 4. Fetch metadata progressively ──────────────────────
-      for (const l of listed) {
+      // ✅ FIX: Fetch metadata in parallel batches of 5 (much faster than sequential)
+      const META_BATCH = 5;
+      for (let i = 0; i < listed.length; i += META_BATCH) {
         if (abortRef.current.signal.aborted) break;
-        const meta = await fetchMeta(l.id, nft);
-        setItems(prev => prev.map(item =>
-          item.id === l.id ? { ...item, meta, metaLoading: false } : item
-        ));
+        const batch = listed.slice(i, i + META_BATCH);
+        await Promise.all(
+          batch.map(async (l) => {
+            const meta = await fetchMeta(l.id, nft);
+            setItems(prev => prev.map(item =>
+              item.id === l.id ? { ...item, meta, metaLoading: false } : item
+            ));
+          })
+        );
       }
 
     } catch (e) {
@@ -344,7 +338,6 @@ export default function NFTGallery({ account, onBuyRequest }) {
   return (
     <div className="fade-in">
 
-      {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px", marginBottom: "20px" }}>
         <div>
           <h2 style={{ fontFamily: "Cinzel, serif", fontWeight: 700, fontSize: "18px", color: "var(--gold)", letterSpacing: "3px", marginBottom: "3px" }}>
@@ -360,7 +353,6 @@ export default function NFTGallery({ account, onBuyRequest }) {
         </button>
       </div>
 
-      {/* Filter bar */}
       <div className="filter-bar">
         <input
           className="field-input"
@@ -384,14 +376,12 @@ export default function NFTGallery({ account, onBuyRequest }) {
         </select>
       </div>
 
-      {/* Skeleton */}
       {loading && (
         <div className="nft-gallery-grid">
           {Array.from({ length: 8 }).map((_, i) => <NFTCard key={i} loading index={i} />)}
         </div>
       )}
 
-      {/* Error */}
       {error && !loading && (
         <div style={{ background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: "12px", padding: "20px", textAlign: "center" }}>
           <div style={{ color: "var(--red)", fontSize: "13px", marginBottom: "10px" }}>✕ {error}</div>
@@ -399,7 +389,6 @@ export default function NFTGallery({ account, onBuyRequest }) {
         </div>
       )}
 
-      {/* Empty */}
       {!loading && !error && visible.length === 0 && (
         <div className="empty-state">
           <div className="empty-state__icon">◈</div>
@@ -410,7 +399,6 @@ export default function NFTGallery({ account, onBuyRequest }) {
         </div>
       )}
 
-      {/* Grid */}
       {!loading && visible.length > 0 && (
         <div className="nft-gallery-grid">
           {visible.map((item, i) => (
@@ -421,7 +409,6 @@ export default function NFTGallery({ account, onBuyRequest }) {
         </div>
       )}
 
-      {/* Stats footer */}
       {!loading && visible.length > 1 && (
         <div style={{ marginTop: "20px", padding: "12px 18px", background: "var(--card)", border: "1px solid var(--border)", borderRadius: "10px", display: "flex", gap: "24px", flexWrap: "wrap" }}>
           <div>
@@ -443,7 +430,6 @@ export default function NFTGallery({ account, onBuyRequest }) {
         </div>
       )}
 
-      {/* Detail modal */}
       <NFTDetailModal
         item={selected}
         onClose={() => setSelected(null)}
