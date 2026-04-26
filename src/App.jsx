@@ -4,7 +4,7 @@ import { ConnectButton, useActiveAccount } from "thirdweb/react";
 import Marketplace from "./Marketplace.jsx";
 import VaultGame   from "./VaultGame.jsx";
 import BridgeModal from "./BridgeModal.jsx";
-import NFTGallery  from "./NFTGallery.jsx";
+import NFTGallery  from "./NFTGallery.jsx";  // ✅ file must be in src/ folder
 import { MONAD, CLIENT_ID, TG_BOT_URL } from "./config.js";
 
 /* ── Thirdweb client — exported so other modules can import it ── */
