@@ -51,6 +51,29 @@ async function rpcGetBalance(address) {
   return BigInt(result);
 }
 
+/* ─── NFT ABI (hardcoded — full verified ABI from Monadscan) ────── */
+const NFT_ABI_FULL = [
+  { "inputs": [{ "internalType": "address", "name": "owner_", "type": "address" }], "stateMutability": "nonpayable", "type": "constructor" },
+  { "inputs": [{ "internalType": "address", "name": "to", "type": "address" }, { "internalType": "uint256", "name": "tokenId", "type": "uint256" }], "name": "approve", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
+  { "inputs": [{ "internalType": "address", "name": "owner", "type": "address" }], "name": "balanceOf", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
+  { "inputs": [{ "internalType": "uint256", "name": "tokenId", "type": "uint256" }], "name": "getApproved", "outputs": [{ "internalType": "address", "name": "", "type": "address" }], "stateMutability": "view", "type": "function" },
+  { "inputs": [{ "internalType": "address", "name": "owner", "type": "address" }, { "internalType": "address", "name": "operator", "type": "address" }], "name": "isApprovedForAll", "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }], "stateMutability": "view", "type": "function" },
+  { "inputs": [{ "internalType": "address", "name": "to", "type": "address" }, { "internalType": "string", "name": "uri", "type": "string" }], "name": "mint", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
+  { "inputs": [], "name": "name", "outputs": [{ "internalType": "string", "name": "", "type": "string" }], "stateMutability": "view", "type": "function" },
+  { "inputs": [], "name": "nextId", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
+  { "inputs": [], "name": "owner", "outputs": [{ "internalType": "address", "name": "", "type": "address" }], "stateMutability": "view", "type": "function" },
+  { "inputs": [{ "internalType": "uint256", "name": "tokenId", "type": "uint256" }], "name": "ownerOf", "outputs": [{ "internalType": "address", "name": "", "type": "address" }], "stateMutability": "view", "type": "function" },
+  { "inputs": [], "name": "renounceOwnership", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
+  { "inputs": [{ "internalType": "address", "name": "from", "type": "address" }, { "internalType": "address", "name": "to", "type": "address" }, { "internalType": "uint256", "name": "tokenId", "type": "uint256" }], "name": "safeTransferFrom", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
+  { "inputs": [{ "internalType": "address", "name": "from", "type": "address" }, { "internalType": "address", "name": "to", "type": "address" }, { "internalType": "uint256", "name": "tokenId", "type": "uint256" }, { "internalType": "bytes", "name": "data", "type": "bytes" }], "name": "safeTransferFrom", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
+  { "inputs": [{ "internalType": "address", "name": "operator", "type": "address" }, { "internalType": "bool", "name": "approved", "type": "bool" }], "name": "setApprovalForAll", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
+  { "inputs": [{ "internalType": "bytes4", "name": "interfaceId", "type": "bytes4" }], "name": "supportsInterface", "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }], "stateMutability": "view", "type": "function" },
+  { "inputs": [], "name": "symbol", "outputs": [{ "internalType": "string", "name": "", "type": "string" }], "stateMutability": "view", "type": "function" },
+  { "inputs": [{ "internalType": "uint256", "name": "tokenId", "type": "uint256" }], "name": "tokenURI", "outputs": [{ "internalType": "string", "name": "", "type": "string" }], "stateMutability": "view", "type": "function" },
+  { "inputs": [{ "internalType": "address", "name": "from", "type": "address" }, { "internalType": "address", "name": "to", "type": "address" }, { "internalType": "uint256", "name": "tokenId", "type": "uint256" }], "name": "transferFrom", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
+  { "inputs": [{ "internalType": "address", "name": "newOwner", "type": "address" }], "name": "transferOwnership", "outputs": [], "stateMutability": "nonpayable", "type": "function" }
+];
+
 /* ─── Error helpers ──────────────────────────────────────────────── */
 const FRIENDLY_ERRORS = [
   [/user rejected/i,                "Transaction cancelled by wallet."],
@@ -738,37 +761,112 @@ export default function Marketplace({ account }) {
   const { mutate: sendTx } = useSendTransaction();
 
   // Memoised contracts
-  const nft = useMemo(() => getContract({ client, chain: MONAD, address: NFT_ADDRESS,         abi: NFT_ABI }),         []);
+  const nft = useMemo(() => getContract({ client, chain: MONAD, address: "0x45336C2E15F2fe58c67Ee4035a520231b2751669", abi: NFT_ABI_FULL }), []);
   const mkt = useMemo(() => getContract({ client, chain: MONAD, address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI }), []);
 
   const msg = useCallback((m, type = "success") => setStatus({ m, type }), []);
 
   // Auto-fetch NFT metadata whenever buyId changes
+  // Uses multiple IPFS gateways with AbortController timeout fallback
   useEffect(() => {
     if (!buyId) { setBuyMeta(null); return; }
     let cancelled = false;
     setBuyMetaLoading(true);
+    setBuyMeta(null);
+
+    const IPFS_GATEWAYS = [
+      "https://gateway.pinata.cloud/ipfs/",
+      "https://cloudflare-ipfs.com/ipfs/",
+      "https://ipfs.io/ipfs/",
+      "https://dweb.link/ipfs/",
+    ];
+
+    // Resolve any URI → HTTPS, trying gateways in order for ipfs://
+    async function resolveUri(uri) {
+      if (!uri) throw new Error("empty URI");
+
+      // data URI — decode inline
+      if (uri.startsWith("data:application/json")) {
+        const b64 = uri.split(",")[1];
+        return JSON.parse(atob(b64));
+      }
+
+      // plain HTTPS
+      if (uri.startsWith("http")) {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 8000);
+        try {
+          const res = await fetch(uri, { signal: ctrl.signal });
+          clearTimeout(timer);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return await res.json();
+        } catch (e) { clearTimeout(timer); throw e; }
+      }
+
+      // ipfs:// — try gateways in order
+      if (uri.startsWith("ipfs://")) {
+        const cid = uri.slice(7); // everything after ipfs://
+        for (const gw of IPFS_GATEWAYS) {
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 6000);
+          try {
+            const res = await fetch(gw + cid, { signal: ctrl.signal });
+            clearTimeout(timer);
+            if (!res.ok) continue;
+            return await res.json();
+          } catch (_) { clearTimeout(timer); }
+        }
+        throw new Error("All IPFS gateways failed for: " + uri);
+      }
+
+      throw new Error("Unknown URI scheme: " + uri);
+    }
+
+    // Resolve image field — also handles ipfs:// images
+    function resolveImage(raw) {
+      if (!raw) return null;
+      if (raw.startsWith("ipfs://")) return IPFS_GATEWAYS[0] + raw.slice(7);
+      return raw;
+    }
+
     (async () => {
       try {
-        const uri = await readContract({ contract: nft, method: "tokenURI", params: [BigInt(buyId)] });
-        const url = uri.startsWith("ipfs://")
-          ? uri.replace("ipfs://", "https://ipfs.io/ipfs/")
-          : uri;
-        let data;
-        if (url.startsWith("data:application/json")) {
-          data = JSON.parse(atob(url.split(",")[1]));
-        } else {
-          const res = await fetch(url);
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          data = await res.json();
+        // 0. Guard: check token exists (nextId is the next unminted ID)
+        const nextId = await readContract({ contract: nft, method: "nextId", params: [] }).catch(() => null);
+        console.log("[NFT] nextId:", nextId ? nextId.toString() : "unknown");
+        if (nextId !== null && BigInt(buyId) >= nextId) {
+          throw new Error(`Token #${buyId} does not exist yet (nextId=${nextId}). Valid IDs: 0 – ${nextId - 1n}`);
         }
-        const img = data.image?.replace("ipfs://", "https://ipfs.io/ipfs/") ?? null;
-        if (!cancelled) setBuyMeta({ name: data.name, description: data.description, image: img });
-      } catch (_) {
-        if (!cancelled) setBuyMeta(null);
+
+        // 1. Read tokenURI from chain
+        const uri = await readContract({
+          contract: nft,
+          method: "tokenURI",
+          params: [BigInt(buyId)],
+        });
+        console.log("[NFT] tokenURI for #" + buyId + ":", uri);
+        if (!uri || uri.trim() === "") throw new Error("tokenURI returned empty string for #" + buyId);
+
+        // 2. Fetch metadata
+        const data = await resolveUri(uri);
+        console.log("[NFT] metadata:", data);
+
+        const img = resolveImage(data?.image ?? null);
+
+        if (!cancelled) {
+          setBuyMeta({
+            name:        data?.name        ?? `Token #${buyId}`,
+            description: data?.description ?? null,
+            image:       img,
+          });
+        }
+      } catch (e) {
+        console.error("[NFT] metadata fetch failed for #" + buyId + ":", e.message);
+        if (!cancelled) setBuyMeta({ name: `Token #${buyId}`, description: null, image: null });
       }
       if (!cancelled) setBuyMetaLoading(false);
     })();
+
     return () => { cancelled = true; };
   }, [buyId, nft]);
 
@@ -776,13 +874,17 @@ export default function Marketplace({ account }) {
 
   const checkListing = useCallback(async id => {
     try {
-      msg("Fetching listing…", "info");
+      msg("Fetching listing...", "info");
       const d = await readContract({ contract: mkt, method: "listings", params: [BigInt(id)] });
+      console.log("[Market] listing for #" + id + ":", d);
       setListing({ seller: d[0], price: formatEther(d[1]), active: d[2] });
       d[2]
-        ? msg(`Token #${id} — ${formatEther(d[1])} MON`, "success")
-        : msg(`Token #${id} is not currently listed.`, "error");
-    } catch (e) { msg(friendlyError(e), "error"); }
+        ? msg(`Token #${id} listed for ${formatEther(d[1])} MON`, "success")
+        : msg(`Token #${id} is not listed for sale.`, "error");
+    } catch (e) {
+      console.error("[Market] checkListing error:", e);
+      msg(friendlyError(e), "error");
+    }
   }, [mkt, msg]);
 
   const handleApprove = useCallback(async id => {
