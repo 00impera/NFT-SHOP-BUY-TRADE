@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getContract, readContract } from "thirdweb";
-import { formatEther } from "ethers"; // ✅ ethers v6 top-level import
+import { formatEther } from "ethers";
 import { client } from "./App.jsx";
 import {
   MONAD, NFT_ADDRESS, MARKETPLACE_ADDRESS,
@@ -227,7 +227,7 @@ function NFTDetailModal({ item, onClose, onBuy }) {
 /* ════════════════════════════════════════════════════════════
    MAIN GALLERY COMPONENT
    ════════════════════════════════════════════════════════════ */
-export default function NFTGallery({ account, onBuyRequest }) {
+export default function NFTGallery({ account, onBuyRequest, onStatsUpdate }) {
   const [items,    setItems]    = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState(null);
@@ -236,6 +236,19 @@ export default function NFTGallery({ account, onBuyRequest }) {
   const [selected, setSelected] = useState(null);
   const [search,   setSearch]   = useState("");
   const abortRef = useRef(null);
+
+  // ── Push stats up to parent whenever items change ─────────
+  useEffect(() => {
+    if (!onStatsUpdate) return;
+    if (loading) return; // wait until first load is done
+
+    const prices = items.map(i => parseFloat(i.price));
+    const totalVolume = prices.reduce((s, p) => s + p, 0);
+    const floorPrice  = prices.length ? Math.min(...prices) : 0;
+    const nftsListed  = items.length;
+
+    onStatsUpdate({ totalVolume, floorPrice, nftsListed });
+  }, [items, loading, onStatsUpdate]);
 
   const loadGallery = useCallback(async () => {
     setLoading(true); setError(null);
@@ -259,7 +272,7 @@ export default function NFTGallery({ account, onBuyRequest }) {
         return;
       }
 
-      // ✅ FIX: Scan listings in parallel batches of 20
+      // Scan listings in parallel batches of 20
       const BATCH = 20;
       const listed = [];
 
@@ -288,7 +301,7 @@ export default function NFTGallery({ account, onBuyRequest }) {
       setItems(listed.map(l => ({ ...l, meta: null, metaLoading: true })));
       setLoading(false);
 
-      // ✅ FIX: Fetch metadata in parallel batches of 5 (much faster than sequential)
+      // Fetch metadata in parallel batches of 5
       const META_BATCH = 5;
       for (let i = 0; i < listed.length; i += META_BATCH) {
         if (abortRef.current.signal.aborted) break;
